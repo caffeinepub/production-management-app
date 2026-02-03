@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
-  "projectStateVersion": 35,
-  "summary": "Production Management App (Production Manager) is a web/PWA application backed by an Internet Computer (Motoko) canister for tracking manufacturing production. It provides master-data management (products, machines, operators), a production data-entry form that computes targets and time metrics, and an admin reports interface for filtering, summarizing, exporting (CSV/HTML) and deleting production entries. The frontend uses React + TypeScript with TanStack React Query for data fetching/caching and optimistic updates, integrates Internet Identity for authentication, and is packaged as a PWA with service-worker offline caching and Android Trusted Web Activity (TWA) deployment artifacts. The backend includes basic access-control initialization/role assignment, user profile storage, production-entry computations, and a Caffeine blob-storage maintenance mixin.",
+  "projectStateVersion": 109,
+  "summary": "Production Management App (Production Manager) is a web/PWA application backed by an Internet Computer (Motoko) canister for tracking manufacturing production. It targets Android usage via PWA/TWA APK packaging and includes master-data management (products, machines, operators), a production data-entry form with runtime/target/operator-hour calculations, and an admin reports interface (filtering, summaries, export/share, deletion). The conversation introduced plans to run the app without Internet Identity login (direct access), add additional production fields (pieces-per-cycle, parts-produced, downtime, punch in/out & duty time), extend reporting (date-range, operator/product summaries), improve large dropdown usability and master-data sorting, and improve mobile/TWA export+share behavior.",
   "existing_features": [
     {
       "id": "IF-1",
@@ -175,54 +175,168 @@
       "version": 1
     },
     {
-      "id": "feature-update-the-data-entry-page-to-display-cycle-time-for-10-hour-target-and-cycle-time-for-12-hour-target-consistently-in-minutes-and-seconds-e-g-0m-45s-1m-05s-not-seconds-only-including-correct-rounding-and-minute-second-carry-e-g-59-6s-should-display-as-1m-00s",
-      "title": "Update the Data Entry page to display “Cycle Time for 10 Hour Target” and “Cycle Time for 12 Hour Target” consistently in minutes and seconds (e.g., “0m 45s”, “1m 05s”), not seconds-only, including correct rounding and minute/second carry (e.g., 59.6s should display as “1m 00s”).",
-      "reqIds": [
-        "REQ-1"
+      "id": "IF-16",
+      "title": "Stable storage and upgrade migration for backend state",
+      "synonyms": [
+        "Stable variables",
+        "preupgrade/postupgrade",
+        "state migration"
       ],
+      "description": "Backend state for core entities (e.g., products, machines, operators, production entries, user profiles, and authorization/access-control state) is persisted across canister upgrades using stable storage and explicit migration/upgrade hooks, with a migration module to evolve stored schema safely.",
+      "reqIds": [],
       "version": 1
     },
     {
-      "id": "feature-fix-total-operator-hours-so-it-scales-with-the-entered-quantity-produced-i-e-it-must-not-behave-as-if-quantity-is-always-1-ensure-the-value-shown-on-the-data-entry-page-and-the-value-stored-in-production-entries-and-therefore-shown-in-admin-reports-use-the-same-quantity-based-calculation",
-      "title": "Fix Total Operator Hours so it scales with the entered “Quantity Produced” (i.e., it must not behave as if quantity is always 1). Ensure the value shown on the Data Entry page and the value stored in production entries (and therefore shown in Admin → Reports) use the same quantity-based calculation.",
+      "id": "IF-17",
+      "title": "Duty Time calculation with <12h lunch-break deduction (frontend + backend)",
+      "synonyms": [
+        "Punch in/out duty time rule",
+        "30-minute deduction"
+      ],
+      "description": "Duty Time is derived from Punch In/Punch Out with a business rule: if (PunchOut − PunchIn) < 12h then Duty Time = duration − 30 minutes; otherwise no 30-minute deduction. The adjusted Duty Time is used consistently across UI display and backend-stored ProductionEntry computations.",
       "reqIds": [
         "REQ-2"
       ],
       "version": 1
     },
     {
-      "id": "feature-restore-the-ability-to-add-edit-delete-products-machines-and-operators-from-the-admin-page-for-a-signed-in-user-this-includes-ensuring-the-backend-permissions-for-create-update-delete-operations-allow-the-intended-authenticated-users-to-perform-admin-crud-without-being-blocked-by-admin-only-authorization-traps",
-      "title": "Restore the ability to add/edit/delete Products, Machines, and Operators from the Admin page for a signed-in user. This includes ensuring the backend permissions for create/update/delete operations allow the intended authenticated users to perform Admin CRUD without being blocked by admin-only authorization traps.",
+      "id": "IF-18",
+      "title": "Total Operator Hours formula updated and shared across frontend + backend",
+      "synonyms": [
+        "Operator hours calculation",
+        "Shift target–based operator hours"
+      ],
+      "description": "Replaces prior operator-hours logic with the user-specified formula based on adjusted Duty Time and shift targets: if Duty Time ≤ 10h then (QuantityProduced / TenHourTarget) * 10; else (QuantityProduced / TwelveHourTarget) * 12. Implemented for real-time Data Entry display and persisted identically in backend ProductionEntry.totalOperatorHours.",
+      "reqIds": [
+        "REQ-3"
+      ],
+      "version": 1
+    },
+    {
+      "id": "IF-19",
+      "title": "Reports display/export Total Operator Hours from stored entry value (no report-side recomputation)",
+      "synonyms": [
+        "Single source of truth operator hours",
+        "Report correctness"
+      ],
+      "description": "Reports UI and CSV/HTML exports use ProductionEntry.totalOperatorHours as stored on each entry and do not recalculate Total Operator Hours in the reporting codepath.",
       "reqIds": [
         "REQ-4"
+      ],
+      "version": 1
+    },
+    {
+      "id": "IF-20",
+      "title": "No-login (personal mode) app access with removed admin gating for master-data CRUD",
+      "synonyms": [
+        "Direct access without Internet Identity",
+        "Anonymous mode",
+        "No admin restrictions for products/machines/operators"
+      ],
+      "description": "App can be used without Internet Identity login (direct/anonymous access). Master-data CRUD (products, machines, operators) no longer requires admin privileges, enabling full personal-use workflows without authentication prompts or authorization blocks.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-21",
+      "title": "Sign-in/login UI removed; app always opens in no-login/personal mode",
+      "synonyms": [
+        "Remove Sign In option",
+        "No login prompts",
+        "Always-anonymous mode UI"
+      ],
+      "description": "Frontend no longer exposes Sign In / Internet Identity login prompts in the UI. The app opens directly in personal/no-login mode while still supporting core workflows via an anonymous canister actor.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-22",
+      "title": "Post-mutation UI refresh via React Query invalidation for entries and master data",
+      "synonyms": [
+        "Immediate list refresh after create/update/delete",
+        "Cache invalidation fixes"
+      ],
+      "description": "Create/update/delete mutations for production entries and master data (products/machines/operators) now invalidate/refetch the relevant React Query caches so newly added/edited items appear immediately in UI lists, dropdowns, and reports without requiring a manual reload.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "feature-ensure-the-total-operator-hours-value-stored-on-each-productionentry-in-the-backend-matches-the-total-operator-hours-value-calculated-and-shown-in-the-data-entry-form-so-that-the-reports-table-exported-reports-display-the-exact-same-operator-hours-value-for-the-same-entry",
+      "title": "Ensure the Total Operator Hours value stored on each ProductionEntry in the backend matches the Total Operator Hours value calculated and shown in the Data Entry form, so that the Reports table/exported reports display the exact same operator-hours value for the same entry.",
+      "reqIds": [
+        "REQ-5"
       ],
       "version": 1
     }
   ],
   "new_feature_requests": [
     {
-      "id": "AR-1",
-      "summary": "Display cycle time for 10h/12h targets in minutes+seconds (not seconds only) across form/reports.",
-      "reqIds": [],
-      "status": "pending"
-    },
-    {
       "id": "AR-2",
-      "summary": "Fix Total Operator Hours calculation to scale with Quantity Produced (currently behaves as if quantity=1); include correct aggregation logic.",
+      "summary": "Add product master-data field: Pieces per Cycle; in data-entry add Number of Parts Produced auto-calculated as Pieces per Cycle × Quantity Produced (stored and shown in reports/exports)",
       "reqIds": [],
       "status": "pending"
     },
     {
       "id": "AR-3",
-      "summary": "Fix Admin section master-data CRUD so user can add machines/operators/products (currently cannot add anything).",
+      "summary": "Add downtime capture on data-entry (reason + duration) and ensure downtime is included in runtime/operator-hour calculations (but NOT multiplied by quantity)",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-4",
+      "summary": "Add attendance fields in data-entry: Punch In, Punch Out, and auto-calculated Duty Time; include in reports/exports",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-5",
+      "summary": "Add/adjust 10-hour and 12-hour target calculations based on form-entered cycle time (including loading+unloading) with configurable reduction factor; show targets as separate fields and include in reports",
       "reqIds": [],
       "status": "pending"
     },
     {
       "id": "AR-6",
-      "summary": "Update backend Total Operator Hours computation to align with the frontend duty-time threshold rule: when duty time < 12 hours compute using cycle time for the 10-hour target × quantity produced + downtime; when duty time ≥ 12 hours compute using cycle time for the 12-hour target × quantity produced + downtime. (Do not compute operator hours using the form-entered cycle time when target cycle times are available.)",
+      "summary": "Implement Total Operator Hours field with configurable business rules (duty-time threshold logic, downtime inclusion, target-achieved overrides) and include per-operator summaries over a date range",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-7",
+      "summary": "Reporting enhancements: add report types for custom date range, report by date, report by product, operator-by-date-range report, and product/operator summaries for a selected date range",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-8",
+      "summary": "Mobile/TWA export improvements: ensure CSV/PDF export works on Android (APK/TWA) and add sharing (Web Share/intent) plus reliable save location/\"View file\" flow",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-9",
+      "summary": "Master-data UX: add sorting in master-data tables; ensure dropdowns support large lists with scrolling and optionally stable ordering (e.g., serial/ID order)",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-10",
+      "summary": "Add derived cycle-time fields for 10h/12h targets (displayed as minutes:seconds) based on provided formulas and keep formatting consistent across UI and reports",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-11",
+      "summary": "Obtain clarification from the user on the exact three changes they want made (including the affected screen/feature, the desired new behavior, and any formulas/fields involved) before starting implementation; do not make speculative changes based only on prior deployments.",
       "reqIds": [
-        "REQ-3"
+        "REQ-1"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "AR-13",
+      "summary": "Align backend operator-hours business logic with the frontend operator-hours utility: (1) use the same duty-time threshold rule as the form (≤ 10 hours uses 10-hour target formula; > 10 hours uses 12-hour target formula), (2) compute Total Operator Hours with fractional precision (minutes/seconds) instead of integer hours-only division, and (3) keep Duty Time lunch-break deduction consistent with the form rule (deduct 30 minutes only when raw duration is < 12 hours).",
+      "reqIds": [
+        "REQ-6"
       ],
       "status": "pending"
     }
@@ -239,18 +353,41 @@
     "Android TWA distribution is supported via assetlinks.json and a packaging guide.",
     "Backend includes a Caffeine blob-storage maintenance mixin with authorization checks for blob pruning workflows and cashier refill support.",
     "Build template infrastructure was updated (React/Vite workspace, scripts for pruning/resizing images, and custom ESLint rules such as avoiding BigInt in React Query keys and requiring the Internet Identity provider wrapper).",
-    "UI layer now incorporates shadcn/ui component primitives (Tailwind-based) as a shared design system; many prebuilt components live under src/components/ui and are consumed by app pages/dialogs."
+    "UI layer now incorporates shadcn/ui component primitives (Tailwind-based) as a shared design system; many prebuilt components live under src/components/ui and are consumed by app pages/dialogs.",
+    "Backend now includes a migration/upgrade layer (preupgrade/postupgrade + migration module) to persist application state in stable storage across canister upgrades and to support future schema evolution.",
+    "Add a 'no-login/personal mode' option: bypass Internet Identity and adjust backend/authorization expectations accordingly (especially for master-data CRUD and deletion actions).",
+    "Exports on mobile/TWA should use mobile-compatible save/share flows (Web Share API, Android intent-style sharing, and robust fallbacks when traditional downloads/file pickers fail).",
+    "Time-entry UX requires consistent units/formatting (cycle time in minutes+seconds where requested; runtime in hours+minutes) and shared formatting helpers for UI + reports.",
+    "Total Operator Hours business rule update: if Duty Time ≤ 10h then TotalOperatorHours = (QuantityProduced / TenHourTarget) * 10; if Duty Time > 10h then TotalOperatorHours = (QuantityProduced / TwelveHourTarget) * 12 (ensure consistent units/rounding).",
+    "Duty Time adjustment rule update: if (PunchOut − PunchIn) < 12h then Duty Time = (PunchOut − PunchIn) − 30 minutes; otherwise no 30-minute deduction.",
+    "Reporting requirement: reports must use the same Total Operator Hours value/rules as shown in the form data (no divergent report-side recomputation).",
+    "Total Operator Hours business rule (confirmed): if Duty Time ≤ 10h then TotalOperatorHours = (QuantityProduced / TenHourTarget) * 10; if Duty Time > 10h then TotalOperatorHours = (QuantityProduced / TwelveHourTarget) * 12 (ensure consistent units/rounding).",
+    "Duty Time adjustment rule (confirmed): if (PunchOut − PunchIn) < 12h then Duty Time = (PunchOut − PunchIn) − 30 minutes; otherwise no 30-minute deduction.",
+    "Reporting requirement (confirmed): reports must display the exact Total Operator Hours value stored/calculated for the entry (single source of truth; no report-side recomputation).",
+    "Frontend and backend share a single, aligned Duty Time + Total Operator Hours business-rules implementation (via shared frontend helpers and mirrored backend logic) to avoid discrepancies.",
+    "Reports and exports treat ProductionEntry.totalOperatorHours as the single source of truth and do not recompute operator hours in reporting.",
+    "Scope clarification: remove admin restrictions completely (no admin gating) for master-data CRUD (machines/products/operators) so the app works fully without login for personal use.",
+    "Performance focus: optimize sluggishness specifically when loading the data-entry form and when adding machines (admin/master-data workflows).",
+    "User explicitly approved proceeding with (1) completely removing all admin restrictions for master-data CRUD and (2) performance optimization focused on data-entry form load and adding machines workflows.",
+    "Authentication is now optional: the frontend supports operating without an Internet Identity session (personal/anonymous mode) and still creates a functional canister actor for core workflows.",
+    "Scope implemented: admin restrictions were removed/relaxed so master-data CRUD (machines/products/operators) is no longer gated by admin privileges, enabling no-login personal use.",
+    "UI/reporting: remove/replace any 'Avg Runtime' metric with 'Total Operator Hours' where requested, and ensure report-side 'Operator Hours' is displayed from stored ProductionEntry.totalOperatorHours (no recomputation).",
+    "Confirmed scope: Reports (ALL report types) and exports (CSV/PDF/HTML) must display Operator Hours by directly using the stored ProductionEntry.totalOperatorHours value as the single source of truth (no report-side recomputation).",
+    "Confirmed scope: Remove 'Avg Runtime' everywhere it appears (report tables, summary cards/sections, and all exports) and replace it with 'Total Operator Hours' in the same positions/roles.",
+    "Confirmed scope: Fully remove the Sign In option and all Internet Identity login UI prompts so the app always opens in no-login/personal mode.",
+    "10-hour/12-hour target formula decision: compute targets from the Production Entry form’s effective cycle time (form cycle time + product loading + unloading), using constants 34200 (9.5h in seconds) and 39600 (11h in seconds): TenHourTarget = (34200 / effectiveCycleTime) * 0.95 and TwelveHourTarget = (39600 / effectiveCycleTime) * 0.95. Targets are reduced by 5% via multiplier 0.95 and are shown in form + reports.",
+    "React Query mutation success handlers now consistently invalidate/refetch the relevant list/report queries so newly created production entries and master-data records appear immediately across the UI."
   ],
   "knownIssues": [
-    "Backend production-entry calculation for totalOperatorHours contains target-based overrides (if quantityProduced equals tenHourTarget or twelveHourTarget it forces 10h/12h), which conflicts with the frontend’s stated 'no target-based overrides' logic and can produce mismatched values between UI expectations and stored results.",
-    "Backend totalOperatorHours lunch-break logic only adds 30 minutes when dutyTime is exactly 12h 0m, while the frontend adds lunch for duty times >= 12 hours; this can cause discrepancies.",
     "Most backend CRUD endpoints (products, machines, operators, entries) do not enforce AccessControl roles/permissions; any caller can modify data unless guarded elsewhere.",
-    "Backend uses non-stable in-memory Maps and counters (products/machines/operators/entries/userProfiles); data will not persist across canister upgrades without stable storage/migration.",
     "Environment variable name for storage cashier principal appears misspelled as \"CAFFFEINE_STORAGE_CASHIER_PRINCIPAL\" (extra 'F'); this is likely to cause deployment/configuration errors.",
     "Two different CSS theme files are shown (frontend/src/index.css and frontend/index.css) with conflicting variable sets; potential duplication/misconfiguration depending on build setup.",
-    "In Android APK/TWA and/or current build, Admin section cannot add master data (machines/operators/products) — add actions fail or are blocked.",
-    "Cycle time fields for 10h/12h target are displayed in seconds only; should be formatted as minutes+seconds.",
-    "Total Operator Hours appears to be calculated for a single quantity (quantity=1) instead of using Quantity Produced value."
+    "On Android (especially APK/TWA), CSV/PDF export reports may not actually save to accessible storage; 'downloaded' messages and 'View File' actions can be non-functional.",
+    "Reports and report calculations have been repeatedly reported as not generating or not matching expected formulas; needs verification and correction.",
+    "Performance: app can become sluggish/slow to load after multiple feature additions.",
+    "App is sluggish/slow and not responsive during normal use; performance needs optimization (load time + UI interactions).",
+    "Performance: app is sluggish specifically when loading the data-entry form and when adding machines in admin/master data screens.",
+    "BUG: Reports still show 'Op Hours/Operator Hours' that do not exactly match the Total Operator Hours value shown/stored from the data-entry form (should be single source of truth; no report-side recomputation)."
   ],
   "isFixRequest": true,
   "gameProjectType": "none",

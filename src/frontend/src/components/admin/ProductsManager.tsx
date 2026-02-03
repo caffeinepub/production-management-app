@@ -19,28 +19,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Loader2, Package, ArrowUpDown, AlertCircle } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Plus, Pencil, Trash2, Loader2, Package, ArrowUpDown } from 'lucide-react';
 import {
   useGetAllProducts,
   useAddProduct,
   useUpdateProduct,
   useDeleteProduct,
-  useIsAuthenticated,
 } from '../../hooks/useQueries';
 import { useActor } from '../../hooks/useActor';
 import type { Product, ProductId } from '../../backend';
 import { toast } from 'sonner';
+import { formatSecondsAsMinutesSeconds } from '../../utils/timeFormat';
+import MasterDataLoadError from '../MasterDataLoadError';
+import { normalizeBackendError } from '../../utils/backendError';
 
 type SortField = 'name' | 'id' | 'loadingTime' | 'unloadingTime' | 'piecesPerCycle';
 
 export default function ProductsManager() {
   const { actor } = useActor();
-  const isAuthenticated = useIsAuthenticated();
   const [sortBy, setSortBy] = useState<SortField>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   
-  const { data: products = [], isLoading } = useGetAllProducts('name');
+  const { data: products = [], isLoading, isFetched, error, refetch } = useGetAllProducts('name');
   
   const addProduct = useAddProduct();
   const updateProduct = useUpdateProduct();
@@ -102,11 +102,6 @@ export default function ProductsManager() {
       return;
     }
     
-    if (!isAuthenticated) {
-      toast.error('Please sign in to manage products');
-      return;
-    }
-    
     if (product) {
       setEditingProduct(product);
       setFormData({
@@ -132,11 +127,6 @@ export default function ProductsManager() {
   const handleSave = async () => {
     if (!actor) {
       toast.error('Please wait for the system to initialize');
-      return;
-    }
-
-    if (!isAuthenticated) {
-      toast.error('Please sign in to save changes');
       return;
     }
 
@@ -188,11 +178,6 @@ export default function ProductsManager() {
       return;
     }
 
-    if (!isAuthenticated) {
-      toast.error('Please sign in to delete products');
-      return;
-    }
-
     if (confirm('Are you sure you want to delete this product?')) {
       try {
         await deleteProduct.mutateAsync(id);
@@ -202,14 +187,9 @@ export default function ProductsManager() {
     }
   };
 
-  const formatTime = (totalSeconds: number) => {
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return `${mins}m ${secs}s`;
-  };
-
   const isSaving = addProduct.isPending || updateProduct.isPending;
-  const canWrite = actor && isAuthenticated;
+  const showInitialLoading = isLoading && !isFetched;
+  const hasError = error && isFetched;
 
   return (
     <>
@@ -220,26 +200,24 @@ export default function ProductsManager() {
               <CardTitle>Products</CardTitle>
               <CardDescription>Manage products with loading and unloading times</CardDescription>
             </div>
-            <Button onClick={() => handleOpenDialog()} className="gap-2" disabled={isSaving || !canWrite}>
+            <Button onClick={() => handleOpenDialog()} className="gap-2" disabled={isSaving || !actor}>
               <Plus className="h-4 w-4" />
               Add Product
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          {!isAuthenticated && (
-            <Alert className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Please sign in to add, edit, or delete products. You can view existing products without signing in.
-              </AlertDescription>
-            </Alert>
-          )}
-          {isLoading ? (
+          {showInitialLoading ? (
             <div className="text-center py-12">
               <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-3" />
               <p className="text-muted-foreground">Loading products...</p>
             </div>
+          ) : hasError ? (
+            <MasterDataLoadError 
+              title="Failed to load products"
+              message={normalizeBackendError(error)}
+              onRetry={() => refetch()}
+            />
           ) : products.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -315,17 +293,17 @@ export default function ProductsManager() {
                     <TableRow key={product.id.toString()}>
                       <TableCell className="font-medium">{product.name}</TableCell>
                       <TableCell className="text-muted-foreground">{product.id.toString()}</TableCell>
-                      <TableCell>{formatTime(Number(product.loadingTime))}</TableCell>
-                      <TableCell>{formatTime(Number(product.unloadingTime))}</TableCell>
+                      <TableCell>{formatSecondsAsMinutesSeconds(Number(product.loadingTime))}</TableCell>
+                      <TableCell>{formatSecondsAsMinutesSeconds(Number(product.unloadingTime))}</TableCell>
                       <TableCell>{Number(product.piecesPerCycle)}</TableCell>
-                      <TableCell>{formatTime(Number(product.cycleTime))}</TableCell>
+                      <TableCell>{formatSecondsAsMinutesSeconds(Number(product.cycleTime))}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleOpenDialog(product)}
-                            disabled={deleteProduct.isPending || !canWrite}
+                            disabled={deleteProduct.isPending || !actor}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -333,7 +311,7 @@ export default function ProductsManager() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDelete(product.id)}
-                            disabled={deleteProduct.isPending || !canWrite}
+                            disabled={deleteProduct.isPending || !actor}
                           >
                             {deleteProduct.isPending ? (
                               <Loader2 className="h-4 w-4 animate-spin text-destructive" />

@@ -9,17 +9,9 @@ export function normalizeBackendError(error: unknown): string {
   const errorMessage = error instanceof Error ? error.message : String(error);
 
   // Check for common backend trap messages
-  if (errorMessage.includes('Unauthorized')) {
-    if (errorMessage.includes('Only admins')) {
-      return 'Admin access required. Please sign in with an admin account.';
-    }
-    if (errorMessage.includes('Only authenticated users')) {
-      return 'Please sign in to perform this action';
-    }
-    if (errorMessage.includes('Only users can')) {
-      return 'Please sign in to perform this action';
-    }
-    return 'You do not have permission to perform this action. Please sign in.';
+  if (errorMessage.includes('Unauthorized') || errorMessage.includes('Only admin')) {
+    // Generic unauthorized message without sign-in prompt
+    return 'This action requires elevated permissions';
   }
 
   if (errorMessage.includes('name must be unique')) {
@@ -40,11 +32,15 @@ export function normalizeBackendError(error: unknown): string {
   }
 
   if (errorMessage.includes('Actor not available')) {
-    return 'Please wait for the system to initialize';
+    return 'System is still initializing. Please wait a moment and try again.';
   }
 
   if (errorMessage.includes('Quantity produced must be at least 1')) {
     return 'Quantity produced must be at least 1';
+  }
+
+  if (errorMessage.includes('Invalid ID') || errorMessage.includes('invalid')) {
+    return 'Invalid data provided. Please check your inputs and try again.';
   }
 
   // Return the original message if no specific pattern matches

@@ -106,16 +106,19 @@ export interface _CaffeineStorageRefillInformation {
     proposed_top_up_amount?: bigint;
 }
 export type MachineId = bigint;
+export interface NewOperatorFields {
+    name: string;
+}
 export interface RuntimeType {
     hours: bigint;
     minutes: bigint;
     seconds: bigint;
 }
-export type OperatorId = bigint;
 export interface _CaffeineStorageCreateCertificateResult {
     method: string;
     blob_hash: string;
 }
+export type OperatorId = bigint;
 export interface Machine {
     id: MachineId;
     name: string;
@@ -146,7 +149,17 @@ export interface ProductionEntry {
     totalOperatorHours: TimeInterval;
 }
 export type EntryId = bigint;
+export interface NewProductFields {
+    cycleTime: bigint;
+    name: string;
+    loadingTime: bigint;
+    unloadingTime: bigint;
+    piecesPerCycle: bigint;
+}
 export type ProductId = bigint;
+export interface NewMachineFields {
+    name: string;
+}
 export interface Product {
     id: ProductId;
     cycleTime: bigint;
@@ -172,6 +185,9 @@ export interface backendInterface {
     _caffeineStorageRefillCashier(refillInformation: _CaffeineStorageRefillInformation | null): Promise<_CaffeineStorageRefillResult>;
     _caffeineStorageUpdateGatewayPrincipals(): Promise<void>;
     _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
+    addMachine(fields: NewMachineFields): Promise<void>;
+    addOperator(fields: NewOperatorFields): Promise<void>;
+    addProduct(fields: NewProductFields): Promise<void>;
     addProductionEntry(machineId: MachineId, operatorId: OperatorId, productId: ProductId, cycleTime: {
         minutes: bigint;
         seconds: bigint;
@@ -180,9 +196,6 @@ export interface backendInterface {
         seconds: bigint;
     }, punchIn: bigint, punchOut: bigint, timestamp: bigint | null): Promise<void>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
-    createMachine(name: string): Promise<MachineId>;
-    createOperator(name: string): Promise<OperatorId>;
-    createProduct(name: string, loadingTime: bigint, unloadingTime: bigint, piecesPerCycle: bigint, cycleTime: bigint): Promise<ProductId>;
     deleteMachine(id: MachineId): Promise<void>;
     deleteOperator(id: OperatorId): Promise<void>;
     deleteProduct(id: ProductId): Promise<void>;
@@ -313,6 +326,48 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async addMachine(arg0: NewMachineFields): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.addMachine(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.addMachine(arg0);
+            return result;
+        }
+    }
+    async addOperator(arg0: NewOperatorFields): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.addOperator(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.addOperator(arg0);
+            return result;
+        }
+    }
+    async addProduct(arg0: NewProductFields): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.addProduct(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.addProduct(arg0);
+            return result;
+        }
+    }
     async addProductionEntry(arg0: MachineId, arg1: OperatorId, arg2: ProductId, arg3: {
         minutes: bigint;
         seconds: bigint;
@@ -344,48 +399,6 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n9(this._uploadFile, this._downloadFile, arg1));
-            return result;
-        }
-    }
-    async createMachine(arg0: string): Promise<MachineId> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.createMachine(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.createMachine(arg0);
-            return result;
-        }
-    }
-    async createOperator(arg0: string): Promise<OperatorId> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.createOperator(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.createOperator(arg0);
-            return result;
-        }
-    }
-    async createProduct(arg0: string, arg1: bigint, arg2: bigint, arg3: bigint, arg4: bigint): Promise<ProductId> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.createProduct(arg0, arg1, arg2, arg3, arg4);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.createProduct(arg0, arg1, arg2, arg3, arg4);
             return result;
         }
     }

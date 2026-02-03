@@ -49,6 +49,7 @@ import {
 } from '../../hooks/useQueries';
 import type { MachineId, OperatorId, ProductId, ProductionEntry, EntryId } from '../../backend';
 import { toast } from 'sonner';
+import { formatTimeIntervalFromBigInt, convertTimeIntervalToSeconds } from '../../utils/operatorHours';
 
 type ReportType = 'all' | 'daily' | 'monthly' | 'dateRange' | 'machine' | 'operator' | 'product' | 'operatorDateRange' | 'operatorSummary' | 'productSummary';
 
@@ -120,19 +121,6 @@ export default function ReportsViewer() {
     return products.find((p) => p.id.toString() === id.toString())?.name || 'Unknown';
   };
 
-  const formatTime = (hours: bigint, minutes: bigint, seconds?: bigint) => {
-    const h = Number(hours);
-    const m = Number(minutes);
-    const s = seconds ? Number(seconds) : 0;
-    
-    if (h === 0 && m === 0 && s === 0) return '0 minutes';
-    if (h === 0 && s === 0) return `${m} ${m === 1 ? 'minute' : 'minutes'}`;
-    if (h === 0) return `${m}m ${s}s`;
-    if (m === 0 && s === 0) return `${h} ${h === 1 ? 'hour' : 'hours'}`;
-    if (s === 0) return `${h}h ${m}m`;
-    return `${h}h ${m}m ${s}s`;
-  };
-
   const formatTimestamp = (timestamp: bigint) => {
     const ms = Number(timestamp) / 1_000_000;
     return new Date(ms).toLocaleString();
@@ -198,7 +186,7 @@ export default function ReportsViewer() {
     return entries.sort((a, b) => Number(b.timestamp - a.timestamp));
   }, [reportType, allEntries, dateRangeEntries, operatorEntries, productEntries, selectedMachine, selectedOperator, startDateObj, endDateObj]);
 
-  // Calculate summary statistics
+  // Calculate summary statistics using stored totalOperatorHours from backend
   const summary = useMemo(() => {
     const totalQuantity = filteredEntries.reduce((sum, e) => sum + Number(e.quantityProduced), 0);
     const totalParts = filteredEntries.reduce((sum, e) => sum + Number(e.numberOfPartsProduced), 0);
@@ -206,14 +194,13 @@ export default function ReportsViewer() {
     const totalTwelveHourTarget = filteredEntries.reduce((sum, e) => sum + Number(e.twelveHourTarget), 0);
     
     const totalRunTimeSeconds = filteredEntries.reduce((sum, e) => {
-      return sum + Number(e.totalRunTime.hours) * 3600 + Number(e.totalRunTime.minutes) * 60 + Number(e.totalRunTime.seconds);
+      return sum + convertTimeIntervalToSeconds(e.totalRunTime);
     }, 0);
     
+    // Use stored totalOperatorHours from backend (single source of truth)
     const totalOperatorHoursSeconds = filteredEntries.reduce((sum, e) => {
-      return sum + Number(e.totalOperatorHours.hours) * 3600 + Number(e.totalOperatorHours.minutes) * 60 + Number(e.totalOperatorHours.seconds);
+      return sum + convertTimeIntervalToSeconds(e.totalOperatorHours);
     }, 0);
-    
-    const avgRunTimeSeconds = filteredEntries.length > 0 ? totalRunTimeSeconds / filteredEntries.length : 0;
     
     return {
       totalEntries: filteredEntries.length,
@@ -223,11 +210,10 @@ export default function ReportsViewer() {
       totalTwelveHourTarget,
       totalRunTimeSeconds,
       totalOperatorHoursSeconds,
-      avgRunTimeSeconds,
     };
   }, [filteredEntries]);
 
-  // Operator summary
+  // Operator summary using stored totalOperatorHours
   const operatorSummary = useMemo(() => {
     if (reportType !== 'operatorSummary') return [];
     
@@ -243,12 +229,9 @@ export default function ReportsViewer() {
       const opId = entry.operatorId.toString();
       const existing = summaryMap.get(opId);
       
-      const operatorHoursSeconds = Number(entry.totalOperatorHours.hours) * 3600 + 
-                                   Number(entry.totalOperatorHours.minutes) * 60 + 
-                                   Number(entry.totalOperatorHours.seconds);
-      const dutyTimeSeconds = Number(entry.dutyTime.hours) * 3600 + 
-                             Number(entry.dutyTime.minutes) * 60 + 
-                             Number(entry.dutyTime.seconds);
+      // Use stored totalOperatorHours from backend
+      const operatorHoursSeconds = convertTimeIntervalToSeconds(entry.totalOperatorHours);
+      const dutyTimeSeconds = convertTimeIntervalToSeconds(entry.dutyTime);
       
       if (existing) {
         existing.totalOperatorHours += operatorHoursSeconds;
@@ -307,12 +290,11 @@ export default function ReportsViewer() {
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
     
-    if (hours === 0 && minutes === 0 && seconds === 0) return '0 minutes';
-    if (hours === 0 && seconds === 0) return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
-    if (hours === 0) return `${minutes}m ${seconds}s`;
-    if (minutes === 0 && seconds === 0) return `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
-    if (seconds === 0) return `${hours}h ${minutes}m`;
-    return `${hours}h ${minutes}m ${seconds}s`;
+    const parts: string[] = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0) parts.push(`${seconds}s`);
+    return parts.length > 0 ? parts.join(' ') : '0s';
   };
 
   const generateCSVContent = () => {
@@ -362,11 +344,11 @@ export default function ReportsViewer() {
           entry.twelveHourTarget.toString(),
           formatTimeOnly(entry.punchIn),
           formatTimeOnly(entry.punchOut),
-          formatTime(entry.dutyTime.hours, entry.dutyTime.minutes, entry.dutyTime.seconds),
+          formatTimeIntervalFromBigInt(entry.dutyTime.hours, entry.dutyTime.minutes, entry.dutyTime.seconds),
           entry.downtimeReason || 'None',
           `${entry.downtimeTime.minutes}m ${entry.downtimeTime.seconds}s`,
-          formatTime(entry.totalRunTime.hours, entry.totalRunTime.minutes, entry.totalRunTime.seconds),
-          formatTime(entry.totalOperatorHours.hours, entry.totalOperatorHours.minutes, entry.totalOperatorHours.seconds),
+          formatTimeIntervalFromBigInt(entry.totalRunTime.hours, entry.totalRunTime.minutes, entry.totalRunTime.seconds),
+          formatTimeIntervalFromBigInt(entry.totalOperatorHours.hours, entry.totalOperatorHours.minutes, entry.totalOperatorHours.seconds),
         ]);
       });
     }
@@ -380,7 +362,6 @@ export default function ReportsViewer() {
     csvRows.push(['Total 12-Hour Target', summary.totalTwelveHourTarget.toString()]);
     csvRows.push(['Total Run Time', formatSecondsToTime(summary.totalRunTimeSeconds)]);
     csvRows.push(['Total Operator Hours', formatSecondsToTime(summary.totalOperatorHoursSeconds)]);
-    csvRows.push(['Average Run Time', formatSecondsToTime(Math.floor(summary.avgRunTimeSeconds))]);
 
     return csvRows.map((row) => row.map(cell => {
       const cellStr = String(cell);
@@ -500,10 +481,10 @@ export default function ReportsViewer() {
                 <td>${entry.twelveHourTarget}</td>
                 <td>${formatTimeOnly(entry.punchIn)}</td>
                 <td>${formatTimeOnly(entry.punchOut)}</td>
-                <td>${formatTime(entry.dutyTime.hours, entry.dutyTime.minutes)}</td>
+                <td>${formatTimeIntervalFromBigInt(entry.dutyTime.hours, entry.dutyTime.minutes, entry.dutyTime.seconds)}</td>
                 <td>${entry.downtimeReason || 'None'} (${entry.downtimeTime.minutes}m ${entry.downtimeTime.seconds}s)</td>
-                <td>${formatTime(entry.totalRunTime.hours, entry.totalRunTime.minutes)}</td>
-                <td>${formatTime(entry.totalOperatorHours.hours, entry.totalOperatorHours.minutes)}</td>
+                <td>${formatTimeIntervalFromBigInt(entry.totalRunTime.hours, entry.totalRunTime.minutes, entry.totalRunTime.seconds)}</td>
+                <td>${formatTimeIntervalFromBigInt(entry.totalOperatorHours.hours, entry.totalOperatorHours.minutes, entry.totalOperatorHours.seconds)}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -553,7 +534,6 @@ export default function ReportsViewer() {
     <div class="summary-item"><strong>Total 12-Hour Target:</strong> ${summary.totalTwelveHourTarget}</div>
     <div class="summary-item"><strong>Total Run Time:</strong> ${formatSecondsToTime(summary.totalRunTimeSeconds)}</div>
     <div class="summary-item"><strong>Total Operator Hours:</strong> ${formatSecondsToTime(summary.totalOperatorHoursSeconds)}</div>
-    <div class="summary-item"><strong>Average Run Time:</strong> ${formatSecondsToTime(Math.floor(summary.avgRunTimeSeconds))}</div>
   </div>
 </body>
 </html>
@@ -970,8 +950,8 @@ export default function ReportsViewer() {
                 <p className="text-2xl font-bold">{summary.totalParts}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Avg Runtime</p>
-                <p className="text-2xl font-bold">{formatSecondsToTime(Math.floor(summary.avgRunTimeSeconds))}</p>
+                <p className="text-sm text-muted-foreground">Total Operator Hours</p>
+                <p className="text-2xl font-bold">{formatSecondsToTime(Math.floor(summary.totalOperatorHoursSeconds))}</p>
               </div>
             </div>
           )}
@@ -1084,9 +1064,9 @@ export default function ReportsViewer() {
                       <TableCell>{entry.numberOfPartsProduced.toString()}</TableCell>
                       <TableCell>{entry.tenHourTarget.toString()}</TableCell>
                       <TableCell>{entry.twelveHourTarget.toString()}</TableCell>
-                      <TableCell>{formatTime(entry.dutyTime.hours, entry.dutyTime.minutes)}</TableCell>
-                      <TableCell>{formatTime(entry.totalRunTime.hours, entry.totalRunTime.minutes)}</TableCell>
-                      <TableCell>{formatTime(entry.totalOperatorHours.hours, entry.totalOperatorHours.minutes)}</TableCell>
+                      <TableCell>{formatTimeIntervalFromBigInt(entry.dutyTime.hours, entry.dutyTime.minutes, entry.dutyTime.seconds)}</TableCell>
+                      <TableCell>{formatTimeIntervalFromBigInt(entry.totalRunTime.hours, entry.totalRunTime.minutes, entry.totalRunTime.seconds)}</TableCell>
+                      <TableCell>{formatTimeIntervalFromBigInt(entry.totalOperatorHours.hours, entry.totalOperatorHours.minutes, entry.totalOperatorHours.seconds)}</TableCell>
                       <TableCell>
                         <Button
                           variant="ghost"

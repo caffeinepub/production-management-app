@@ -18,13 +18,23 @@ import {
   useAddProductionEntry,
 } from '../hooks/useQueries';
 import type { MachineId, OperatorId, ProductId } from '../backend';
-import { calculateTotalOperatorHours, formatTimeInterval } from '../utils/operatorHours';
+import { 
+  calculateTotalOperatorHours, 
+  formatTimeInterval, 
+  calculateAdjustedDutyTimeSeconds,
+  convertSecondsToTimeInterval 
+} from '../utils/operatorHours';
 import { formatSecondsAsMinutesSeconds } from '../utils/timeFormat';
+import MasterDataLoadError from '../components/MasterDataLoadError';
+import { normalizeBackendError } from '../utils/backendError';
+import { useActor } from '../hooks/useActor';
+import { toast } from 'sonner';
 
 export default function DataEntryPage() {
-  const { data: machines = [], isLoading: machinesLoading } = useGetAllMachines('id');
-  const { data: operators = [], isLoading: operatorsLoading } = useGetAllOperators('id');
-  const { data: products = [], isLoading: productsLoading } = useGetAllProducts('id');
+  const { actor, isFetching: actorFetching } = useActor();
+  const { data: machines = [], isLoading: machinesLoading, isFetched: machinesFetched, error: machinesError, refetch: refetchMachines } = useGetAllMachines('id');
+  const { data: operators = [], isLoading: operatorsLoading, isFetched: operatorsFetched, error: operatorsError, refetch: refetchOperators } = useGetAllOperators('id');
+  const { data: products = [], isLoading: productsLoading, isFetched: productsFetched, error: productsError, refetch: refetchProducts } = useGetAllProducts('id');
   const addEntry = useAddProductionEntry();
 
   const [entryDateTime, setEntryDateTime] = useState<string>('');
@@ -72,36 +82,21 @@ export default function DataEntryPage() {
     ? Math.round((39600 / (formCycleTimeSeconds + Number(selectedProductData.loadingTime) + Number(selectedProductData.unloadingTime))) * 0.95)
     : 0;
 
-  // Calculate cycle time for 10-hour target using formula: (9.5 ÷ 10 Hour Target) × 60
+  // Calculate cycle time for 10-hour target using formula: (10 ÷ 10 Hour Target) × 60
+  // Result is in minutes, then converted to seconds for display
   const cycleTimeForTenHourTarget = tenHourTarget > 0
-    ? (9.5 / tenHourTarget) * 60
+    ? ((10 / tenHourTarget) * 60) * 60  // hours to minutes (* 60), then minutes to seconds (* 60)
     : 0;
 
-  // Calculate cycle time for 12-hour target using formula: (11 ÷ 12 Hour Target) × 60
+  // Calculate cycle time for 12-hour target using formula: (12 ÷ 12 Hour Target) × 60
+  // Result is in minutes, then converted to seconds for display
   const cycleTimeForTwelveHourTarget = twelveHourTarget > 0
-    ? (11 / twelveHourTarget) * 60
+    ? ((12 / twelveHourTarget) * 60) * 60  // hours to minutes (* 60), then minutes to seconds (* 60)
     : 0;
 
-  // Calculate duty time (duration between punch in and punch out)
-  const calculateDutyTime = () => {
-    if (!punchInTime || !punchOutTime) return { hours: 0, minutes: 0, seconds: 0 };
-    
-    const punchIn = new Date(`1970-01-01T${punchInTime}`);
-    const punchOut = new Date(`1970-01-01T${punchOutTime}`);
-    
-    if (punchOut <= punchIn) return { hours: 0, minutes: 0, seconds: 0 };
-    
-    const diffMs = punchOut.getTime() - punchIn.getTime();
-    const totalSeconds = Math.floor(diffMs / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    
-    return { hours, minutes, seconds };
-  };
-
-  const dutyTime = calculateDutyTime();
-  const dutyTimeInSeconds = dutyTime.hours * 3600 + dutyTime.minutes * 60 + dutyTime.seconds;
+  // Calculate adjusted duty time (with 30-minute deduction when raw duration < 12 hours)
+  const adjustedDutyTimeSeconds = calculateAdjustedDutyTimeSeconds(punchInTime, punchOutTime);
+  const dutyTime = convertSecondsToTimeInterval(adjustedDutyTimeSeconds);
 
   const calculateTotalRunTime = () => {
     if (!selectedProductData) return { hours: 0, minutes: 0, seconds: 0 };
@@ -123,14 +118,13 @@ export default function DataEntryPage() {
 
   const totalRunTime = calculateTotalRunTime();
 
-  // Calculate total operator hours using new duty-time threshold rule
-  // Use 0 for quantity when blank/invalid (not 1)
+  // Calculate total operator hours using new formula based on adjusted duty time
+  const quantity = parseInt(quantityProduced) || 0;
   const totalOperatorHours = calculateTotalOperatorHours({
-    dutyTimeInSeconds,
-    cycleTimeForTenHourTarget,
-    cycleTimeForTwelveHourTarget,
-    quantityProduced: parseInt(quantityProduced) || 0,
-    downtimeInSeconds: (parseInt(downtimeMinutes) || 0) * 60 + (parseInt(downtimeSeconds) || 0),
+    dutyTimeInSeconds: adjustedDutyTimeSeconds,
+    quantityProduced: quantity,
+    tenHourTarget,
+    twelveHourTarget,
   });
 
   const formatTimeHoursMinutesSeconds = (hours: number, minutes: number, seconds: number) => {
@@ -152,72 +146,117 @@ export default function DataEntryPage() {
   };
 
   const handleSave = async () => {
-    if (!selectedMachine || !selectedOperator || !selectedProduct || !entryDateTime || !punchInTime || !punchOutTime) {
+    // Validate actor is available
+    if (!actor) {
+      toast.error('System is still initializing. Please wait a moment and try again.');
+      return;
+    }
+
+    // Validate required fields
+    if (!selectedMachine) {
+      toast.error('Please select a machine');
+      return;
+    }
+    if (!selectedOperator) {
+      toast.error('Please select an operator');
+      return;
+    }
+    if (!selectedProduct) {
+      toast.error('Please select a product');
+      return;
+    }
+    if (!entryDateTime) {
+      toast.error('Please enter a date and time');
+      return;
+    }
+    if (!punchInTime) {
+      toast.error('Please enter punch in time');
+      return;
+    }
+    if (!punchOutTime) {
+      toast.error('Please enter punch out time');
       return;
     }
 
     const quantity = parseInt(quantityProduced) || 1;
     if (quantity < 1) {
+      toast.error('Quantity must be at least 1');
       return;
     }
 
-    // Convert datetime-local input to nanosecond timestamp
-    const dateObj = new Date(entryDateTime);
-    const timestampMs = dateObj.getTime();
-    const timestampNs = BigInt(timestampMs) * BigInt(1_000_000); // Convert ms to ns
+    // Validate punch times
+    if (punchOutTime <= punchInTime) {
+      toast.error('Punch out time must be after punch in time');
+      return;
+    }
 
-    // Convert punch in/out times to nanosecond timestamps
-    const today = new Date().toISOString().split('T')[0];
-    const punchInDate = new Date(`${today}T${punchInTime}`);
-    const punchOutDate = new Date(`${today}T${punchOutTime}`);
-    const punchInNs = BigInt(punchInDate.getTime()) * BigInt(1_000_000);
-    const punchOutNs = BigInt(punchOutDate.getTime()) * BigInt(1_000_000);
+    try {
+      // Convert datetime-local input to nanosecond timestamp
+      const dateObj = new Date(entryDateTime);
+      const timestampMs = dateObj.getTime();
+      const timestampNs = BigInt(timestampMs) * BigInt(1_000_000); // Convert ms to ns
 
-    await addEntry.mutateAsync({
-      machineId: BigInt(selectedMachine) as MachineId,
-      operatorId: BigInt(selectedOperator) as OperatorId,
-      productId: BigInt(selectedProduct) as ProductId,
-      cycleTime: {
-        minutes: BigInt(parseInt(minutes) || 0),
-        seconds: BigInt(parseInt(seconds) || 0),
-      },
-      quantityProduced: BigInt(quantity),
-      downtimeReason: downtimeReason,
-      downtimeTime: {
-        minutes: BigInt(parseInt(downtimeMinutes) || 0),
-        seconds: BigInt(parseInt(downtimeSeconds) || 0),
-      },
-      punchIn: punchInNs,
-      punchOut: punchOutNs,
-      timestamp: timestampNs,
-    });
+      // Convert punch in/out times to nanosecond timestamps
+      const today = new Date().toISOString().split('T')[0];
+      const punchInDate = new Date(`${today}T${punchInTime}`);
+      const punchOutDate = new Date(`${today}T${punchOutTime}`);
+      const punchInNs = BigInt(punchInDate.getTime()) * BigInt(1_000_000);
+      const punchOutNs = BigInt(punchOutDate.getTime()) * BigInt(1_000_000);
 
-    // Reset form with new current date/time
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const mins = String(now.getMinutes()).padStart(2, '0');
-    setEntryDateTime(`${year}-${month}-${day}T${hours}:${mins}`);
-    setSelectedMachine('');
-    setSelectedOperator('');
-    setSelectedProduct('');
-    setMinutes('0');
-    setSeconds('0');
-    setQuantityProduced('1');
-    setDowntimeReason('');
-    setDowntimeMinutes('0');
-    setDowntimeSeconds('0');
-    setPunchInTime('');
-    setPunchOutTime('');
+      await addEntry.mutateAsync({
+        machineId: BigInt(selectedMachine) as MachineId,
+        operatorId: BigInt(selectedOperator) as OperatorId,
+        productId: BigInt(selectedProduct) as ProductId,
+        cycleTime: {
+          minutes: BigInt(parseInt(minutes) || 0),
+          seconds: BigInt(parseInt(seconds) || 0),
+        },
+        quantityProduced: BigInt(quantity),
+        downtimeReason: downtimeReason,
+        downtimeTime: {
+          minutes: BigInt(parseInt(downtimeMinutes) || 0),
+          seconds: BigInt(parseInt(downtimeSeconds) || 0),
+        },
+        punchIn: punchInNs,
+        punchOut: punchOutNs,
+        timestamp: timestampNs,
+      });
+
+      // Reset form with new current date/time
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const mins = String(now.getMinutes()).padStart(2, '0');
+      setEntryDateTime(`${year}-${month}-${day}T${hours}:${mins}`);
+      setSelectedMachine('');
+      setSelectedOperator('');
+      setSelectedProduct('');
+      setMinutes('0');
+      setSeconds('0');
+      setQuantityProduced('1');
+      setDowntimeReason('');
+      setDowntimeMinutes('0');
+      setDowntimeSeconds('0');
+      setPunchInTime('');
+      setPunchOutTime('');
+    } catch (error) {
+      // Error is already handled by the mutation's onError callback
+      console.error('Failed to save entry:', error);
+    }
   };
 
   const isFormValid = selectedMachine && selectedOperator && selectedProduct && entryDateTime && 
                       punchInTime && punchOutTime && parseInt(quantityProduced) >= 1;
-  const isLoading = machinesLoading || operatorsLoading || productsLoading;
+  
+  // Show loading only on initial load when no cached data exists
+  const isInitialLoading = (machinesLoading && !machinesFetched) || 
+                           (operatorsLoading && !operatorsFetched) || 
+                           (productsLoading && !productsFetched) ||
+                           actorFetching;
 
-  if (isLoading) {
+  if (isInitialLoading) {
     return (
       <div className="max-w-2xl mx-auto">
         <Card className="shadow-lg">
@@ -233,16 +272,27 @@ export default function DataEntryPage() {
   }
 
   // Determine explanation text for Total Operator Hours
-  const downtimeInSeconds = (parseInt(downtimeMinutes) || 0) * 60 + (parseInt(downtimeSeconds) || 0);
+  const useTenHourFormula = adjustedDutyTimeSeconds <= (10 * 3600);
   let operatorHoursExplanation = '';
   
-  if (dutyTimeInSeconds <= 0) {
-    operatorHoursExplanation = `Using 10h cycle time (duty time not available)${downtimeInSeconds > 0 ? ` + ${formatTimeHoursMinutesSeconds(0, parseInt(downtimeMinutes) || 0, parseInt(downtimeSeconds) || 0)} downtime` : ''}`;
-  } else if (dutyTimeInSeconds < (12 * 3600)) {
-    operatorHoursExplanation = `Duty time < 12h: Using cycle time for 10h target${downtimeInSeconds > 0 ? ` + ${formatTimeHoursMinutesSeconds(0, parseInt(downtimeMinutes) || 0, parseInt(downtimeSeconds) || 0)} downtime` : ''}`;
+  if (useTenHourFormula) {
+    operatorHoursExplanation = `Adjusted Duty Time ≤ 10h: Formula = (${quantity} ÷ ${tenHourTarget}) × 10`;
   } else {
-    operatorHoursExplanation = `Duty time ≥ 12h: Using cycle time for 12h target${downtimeInSeconds > 0 ? ` + ${formatTimeHoursMinutesSeconds(0, parseInt(downtimeMinutes) || 0, parseInt(downtimeSeconds) || 0)} downtime` : ''}`;
+    operatorHoursExplanation = `Adjusted Duty Time > 10h: Formula = (${quantity} ÷ ${twelveHourTarget}) × 12`;
   }
+
+  // Determine duty time display value
+  const getDutyTimeDisplay = () => {
+    if (!punchInTime || !punchOutTime) {
+      return 'Enter punch times';
+    }
+    if (punchOutTime <= punchInTime) {
+      return 'Invalid time range';
+    }
+    return formatTimeHoursMinutes(dutyTime.hours, dutyTime.minutes);
+  };
+
+  const isDutyTimeInvalid = (punchInTime && punchOutTime && punchOutTime <= punchInTime);
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -255,6 +305,29 @@ export default function DataEntryPage() {
           <CardDescription>Record production cycle information</CardDescription>
         </CardHeader>
         <CardContent className="pt-6 space-y-6">
+          {/* Error states for master data */}
+          {machinesError && machinesFetched && (
+            <MasterDataLoadError 
+              title="Failed to load machines"
+              message={normalizeBackendError(machinesError)}
+              onRetry={() => refetchMachines()}
+            />
+          )}
+          {operatorsError && operatorsFetched && (
+            <MasterDataLoadError 
+              title="Failed to load operators"
+              message={normalizeBackendError(operatorsError)}
+              onRetry={() => refetchOperators()}
+            />
+          )}
+          {productsError && productsFetched && (
+            <MasterDataLoadError 
+              title="Failed to load products"
+              message={normalizeBackendError(productsError)}
+              onRetry={() => refetchProducts()}
+            />
+          )}
+
           {/* Date/Time Field */}
           <div className="space-y-2">
             <Label htmlFor="entryDateTime" className="flex items-center gap-2">
@@ -466,7 +539,7 @@ export default function DataEntryPage() {
               placeholder="Auto-calculated"
             />
             <p className="text-xs text-muted-foreground">
-              Formula: (9.5 ÷ 10 Hour Target) × 60
+              Formula: (10 ÷ 10 Hour Target) × 60, displayed in minutes and seconds
             </p>
           </div>
 
@@ -504,7 +577,7 @@ export default function DataEntryPage() {
               placeholder="Auto-calculated"
             />
             <p className="text-xs text-muted-foreground">
-              Formula: (11 ÷ 12 Hour Target) × 60
+              Formula: (12 ÷ 12 Hour Target) × 60, displayed in minutes and seconds
             </p>
           </div>
 
@@ -544,26 +617,29 @@ export default function DataEntryPage() {
             </p>
           </div>
 
-          {/* Duty Time - Read-only, Auto-calculated */}
-          {(punchInTime && punchOutTime) && (
-            <div className="space-y-2">
-              <Label htmlFor="dutyTime" className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                Duty Time
-              </Label>
-              <Input
-                id="dutyTime"
-                type="text"
-                value={formatTimeHoursMinutes(dutyTime.hours, dutyTime.minutes)}
-                readOnly
-                className="text-lg font-semibold bg-muted cursor-not-allowed"
-                placeholder="Auto-calculated"
-              />
-              <p className="text-xs text-muted-foreground">
-                Duration between Punch In and Punch Out
+          {/* Duty Time - Always visible, Read-only, Auto-calculated */}
+          <div className="space-y-2">
+            <Label htmlFor="dutyTime" className="flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              Duty Time (Adjusted)
+            </Label>
+            <Input
+              id="dutyTime"
+              type="text"
+              value={getDutyTimeDisplay()}
+              readOnly
+              className={`text-lg font-semibold bg-muted cursor-not-allowed ${isDutyTimeInvalid ? 'text-destructive' : ''}`}
+              placeholder="Enter punch times"
+            />
+            <p className="text-xs text-muted-foreground">
+              Duration between Punch In and Punch Out, with 30-minute deduction when duration is less than 12 hours
+            </p>
+            {isDutyTimeInvalid && (
+              <p className="text-xs text-destructive">
+                Punch out time must be after punch in time
               </p>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Downtime Reason */}
           <div className="space-y-2">
@@ -656,7 +732,7 @@ export default function DataEntryPage() {
           {/* Save Button */}
           <Button
             onClick={handleSave}
-            disabled={!isFormValid || addEntry.isPending}
+            disabled={!isFormValid || addEntry.isPending || !actor}
             className="w-full h-12 text-lg gap-2"
             size="lg"
           >

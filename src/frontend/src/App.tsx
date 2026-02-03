@@ -32,18 +32,18 @@ export default function App() {
               </TabsTrigger>
             </TabsList>
             
-            {/* Only render the active tab panel */}
-            {activeTab === 'entry' && (
+            {/* Keep both panels mounted to avoid remount-triggered refetches */}
+            <div style={{ display: activeTab === 'entry' ? 'block' : 'none' }}>
               <Suspense fallback={<LoadingPanel message="Loading data entry..." />}>
                 <DataEntryPage />
               </Suspense>
-            )}
+            </div>
             
-            {activeTab === 'admin' && (
+            <div style={{ display: activeTab === 'admin' ? 'block' : 'none' }}>
               <Suspense fallback={<LoadingPanel message="Loading admin dashboard..." />}>
                 <AdminDashboard />
               </Suspense>
-            )}
+            </div>
           </Tabs>
         </main>
 

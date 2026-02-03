@@ -1,71 +1,31 @@
 {
   "kind": "implementation_plan",
   "version": "1.0",
-  "title": "Production Manager: time formatting fixes, quantity-scaled operator hours, and Admin sign-in/CRUD restore",
+  "title": "Unify operator-hours formatting between Data Entry and Reports/Exports",
   "requirements": [
     {
-      "id": "REQ-1",
-      "summary": "Format Data Entry target cycle time fields as consistent minutes+seconds with correct rounding and carry.",
+      "id": "REQ-5",
+      "summary": "Make Reports/exports display the exact same Total Operator Hours representation as the Data Entry form for the same production entry.",
       "acceptanceCriteria": [
-        "On the Data Entry page, both target cycle time fields always render as \"<minutes>m <seconds>s\" (minutes may be 0).",
-        "Values that round past 60 seconds correctly carry into minutes (no output like “0m 60s”)."
-      ],
-      "file_operations": [
-        {
-          "path": "frontend/src/utils/timeFormat.ts",
-          "operation": "create",
-          "description": "Create a shared time-format utility that converts a (possibly fractional) seconds value into a \"<minutes>m <seconds>s\" string with rounding-to-nearest-second, minute/second carry handling (e.g., 59.6s -> \"1m 00s\"), and zero-padded seconds (e.g., \"1m 05s\")."
-        },
-        {
-          "path": "frontend/src/pages/DataEntryPage.tsx",
-          "operation": "modify",
-          "description": "Replace the local seconds-to-minutes/seconds formatter used by \"Cycle Time for 10 Hour Target\" and \"Cycle Time for 12 Hour Target\" with the shared formatter from frontend/src/utils/timeFormat.ts so both fields always display as minutes+seconds with correct rounding/carry and padded seconds."
-        }
-      ]
-    },
-    {
-      "id": "REQ-2",
-      "summary": "Ensure Total Operator Hours scales with Quantity Produced in live display and matches the same quantity-based rule used at save time.",
-      "acceptanceCriteria": [
-        "If Quantity Produced is increased (e.g., from 1 to 10), Total Operator Hours increases proportionally according to the app’s operator-hours rule and includes downtime.",
-        "After saving an entry, Admin → Reports shows Total Operator Hours consistent with what was displayed at save time for the same inputs (no mismatch between frontend display and stored backend values)."
+        "After saving a new production entry, the Reports table column “Op Hours” equals the Data Entry form’s displayed “Total Operator Hours” for that entry (no rounding/threshold differences).",
+        "CSV export column “Total Operator Hours” and HTML export column “Operator Hrs/Operator Hrs” match the Data Entry form’s displayed “Total Operator Hours” for the same entry.",
+        "The backend no longer stores Total Operator Hours as whole hours only when the Data Entry form would show minutes/seconds for the same entry (i.e., stored hours/minutes/seconds match the form’s computed breakdown)."
       ],
       "file_operations": [
         {
           "path": "frontend/src/utils/operatorHours.ts",
           "operation": "modify",
-          "description": "Update Total Operator Hours calculation to explicitly (1) treat Quantity Produced as 0 when the field is blank/invalid during live edits (instead of defaulting to 1), (2) round the chosen target cycle time to whole seconds before multiplying by quantity, and (3) keep downtime included as integer seconds, so the preview calculation scales proportionally with quantity and better aligns with a backend integer-seconds representation."
+          "description": "Add a shared Total Operator Hours formatting helper that accepts either number-based or bigint-based time intervals and produces a single canonical display string consistent with Reports/exports (so Data Entry and Reports can render identical values for the same {hours,minutes,seconds})."
         },
         {
           "path": "frontend/src/pages/DataEntryPage.tsx",
           "operation": "modify",
-          "description": "Ensure the Quantity Produced value used for Total Operator Hours preview comes directly from the entered quantity (using 0 when blank/invalid, not a default of 1), and pass the normalized quantity into calculateTotalOperatorHours so the UI display scales proportionally with Quantity Produced and includes downtime."
-        }
-      ]
-    },
-    {
-      "id": "REQ-4",
-      "summary": "Restore Admin add/edit/delete usability for signed-in users by reintroducing in-app Internet Identity sign-in/out controls and preserving write-action gating for unauthenticated users.",
-      "acceptanceCriteria": [
-        "When signed in, the Admin page “Add Product / Add Machine / Add Operator” actions successfully create items and they appear in their respective tables after save.",
-        "When signed in, Admin edit and delete actions work for Products/Machines/Operators without authorization errors.",
-        "If the user is not signed in, Admin write actions remain disabled and/or show the existing sign-in guidance (no change required to read-only viewing)."
-      ],
-      "file_operations": [
-        {
-          "path": "frontend/src/components/LoginButton.tsx",
-          "operation": "create",
-          "description": "Add a reusable Login/Logout button component that uses the selected \"authorization\" component’s frontend guidance with Internet Identity (login/logout, clear cached app data via React Query queryClient.clear() on logout). Verify the component's usage instructions before implementing."
+          "description": "Replace the Data Entry form’s Total Operator Hours display to use the shared operator-hours formatter from frontend/src/utils/operatorHours.ts (instead of the current formatTimeInterval output) so the on-form displayed value matches the Reports/exports representation for the same entry."
         },
         {
-          "path": "frontend/src/components/Header.tsx",
+          "path": "frontend/src/components/admin/ReportsViewer.tsx",
           "operation": "modify",
-          "description": "Wire the new frontend/src/components/LoginButton.tsx into the header so users can sign in/out from anywhere (including the Admin tab). Use the selected \"authorization\" component guidance for authenticated state handling. Verify the component's usage instructions before implementing."
-        },
-        {
-          "path": "frontend/src/utils/backendError.ts",
-          "operation": "modify",
-          "description": "Improve normalization of backend authorization trap/error messages relevant to Admin CRUD (e.g., admin/user role permission failures) so Admin write-action failures provide clear sign-in/permission guidance without changing read-only behavior."
+          "description": "Update the Reports table “Op Hours” cell and both CSV/HTML export renderers to use the same shared operator-hours formatter from frontend/src/utils/operatorHours.ts (removing/avoiding local duplicate formatting helpers) to guarantee the Reports table and exports match the Data Entry form’s displayed Total Operator Hours for the same entry."
         }
       ]
     }

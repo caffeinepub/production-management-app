@@ -1,88 +1,53 @@
 {
   "kind": "build_request",
-  "title": "Fix cycle-time display formatting, scale Total Operator Hours by Quantity Produced, and restore Admin add/edit",
-  "priority": "normal",
+  "title": "Make report Op Hours match Total Operator Hours shown in the data-entry form",
+  "priority": "high",
   "requirements": [
     {
-      "id": "REQ-1",
-      "text": "Update the Data Entry page to display “Cycle Time for 10 Hour Target” and “Cycle Time for 12 Hour Target” consistently in minutes and seconds (e.g., “0m 45s”, “1m 05s”), not seconds-only, including correct rounding and minute/second carry (e.g., 59.6s should display as “1m 00s”).",
-      "target": "frontend",
-      "source": {
-        "messageIds": [
-          "msg-4"
-        ],
-        "quotes": [
-          "cycle time for 10 and 12 hour target is showing in seconds only i want in minutes and seconds"
-        ]
-      },
-      "acceptanceCriteria": [
-        "On the Data Entry page, both target cycle time fields always render as \"<minutes>m <seconds>s\" (minutes may be 0).",
-        "Values that round past 60 seconds correctly carry into minutes (no output like “0m 60s”)."
-      ]
-    },
-    {
-      "id": "REQ-2",
-      "text": "Fix Total Operator Hours so it scales with the entered “Quantity Produced” (i.e., it must not behave as if quantity is always 1). Ensure the value shown on the Data Entry page and the value stored in production entries (and therefore shown in Admin → Reports) use the same quantity-based calculation.",
+      "id": "REQ-5",
+      "text": "Ensure the Total Operator Hours value stored on each ProductionEntry in the backend matches the Total Operator Hours value calculated and shown in the Data Entry form, so that the Reports table/exported reports display the exact same operator-hours value for the same entry.",
       "target": "both",
       "source": {
         "messageIds": [
-          "msg-4"
+          "msg-5"
         ],
         "quotes": [
-          "the time which is coming in total operators hours is coming only for 1 quantity only i want it for the number which is written in the quantity produced"
+          "in report op hours should be equal to total operator hours in form data"
         ]
       },
       "acceptanceCriteria": [
-        "If Quantity Produced is increased (e.g., from 1 to 10), Total Operator Hours increases proportionally according to the app’s operator-hours rule and includes downtime.",
-        "After saving an entry, Admin → Reports shows Total Operator Hours consistent with what was displayed at save time for the same inputs (no mismatch between frontend display and stored backend values)."
+        "After saving a new production entry, the Reports table column “Op Hours” equals the Data Entry form’s displayed “Total Operator Hours” for that entry (no rounding/threshold differences).",
+        "CSV export column “Total Operator Hours” and HTML export column “Operator Hrs/Operator Hrs” match the Data Entry form’s displayed “Total Operator Hours” for the same entry.",
+        "The backend no longer stores Total Operator Hours as whole hours only when the Data Entry form would show minutes/seconds for the same entry (i.e., stored hours/minutes/seconds match the form’s computed breakdown)."
       ]
     },
     {
-      "id": "REQ-3",
-      "text": "Update backend Total Operator Hours computation to align with the frontend duty-time threshold rule: when duty time < 12 hours compute using cycle time for the 10-hour target × quantity produced + downtime; when duty time ≥ 12 hours compute using cycle time for the 12-hour target × quantity produced + downtime. (Do not compute operator hours using the form-entered cycle time when target cycle times are available.)",
+      "id": "REQ-6",
+      "text": "Align backend operator-hours business logic with the frontend operator-hours utility: (1) use the same duty-time threshold rule as the form (≤ 10 hours uses 10-hour target formula; > 10 hours uses 12-hour target formula), (2) compute Total Operator Hours with fractional precision (minutes/seconds) instead of integer hours-only division, and (3) keep Duty Time lunch-break deduction consistent with the form rule (deduct 30 minutes only when raw duration is < 12 hours).",
       "target": "backend",
       "source": {
         "messageIds": [
-          "msg-4"
+          "msg-5"
         ],
         "quotes": [
-          "the time which is coming in total operators hours is coming only for 1 quantity only i want it for the number which is written in the quantity produced"
+          "in report op hours should be equal to total operator hours in form data"
         ]
       },
       "acceptanceCriteria": [
-        "Backend-stored ProductionEntry.totalOperatorHours reflects target-cycle-time-based operator-hours logic and includes downtime.",
-        "Backend calculation uses Quantity Produced in the multiplication (not a constant 1).",
-        "ReportsViewer aggregates Total Operator Hours correctly across multiple saved entries because each entry stores the correct per-entry operator hours."
-      ]
-    },
-    {
-      "id": "REQ-4",
-      "text": "Restore the ability to add/edit/delete Products, Machines, and Operators from the Admin page for a signed-in user. This includes ensuring the backend permissions for create/update/delete operations allow the intended authenticated users to perform Admin CRUD without being blocked by admin-only authorization traps.",
-      "target": "both",
-      "source": {
-        "messageIds": [
-          "msg-4"
-        ],
-        "quotes": [
-          "please this time make allow me the add things in admin page"
-        ]
-      },
-      "acceptanceCriteria": [
-        "When signed in, the Admin page “Add Product / Add Machine / Add Operator” actions successfully create items and they appear in their respective tables after save.",
-        "When signed in, Admin edit and delete actions work for Products/Machines/Operators without authorization errors.",
-        "If the user is not signed in, Admin write actions remain disabled and/or show the existing sign-in guidance (no change required to read-only viewing)."
+        "For any new entry, backend-stored ProductionEntry.totalOperatorHours.{hours,minutes,seconds} matches the frontend calculation performed in frontend/src/utils/operatorHours.ts (calculateTotalOperatorHours + calculateAdjustedDutyTimeSeconds equivalent).",
+        "Backend Duty Time adjustment deducts 30 minutes only when raw punch-out minus punch-in duration is strictly less than 12 hours (not when equal to 12 hours).",
+        "No backend schema/state-shape migration is introduced unless strictly required; changes are limited to computation logic used when creating entries."
       ]
     }
   ],
   "constraints": [
-    "Backend must remain a single Motoko actor in backend/main.mo (no additional backend services).",
-    "Do not edit files under frontend/src/components/ui (compose them only).",
-    "Do not edit frontend immutable paths: frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useInternetIdentity.tsx, frontend/src/hooks/useActor.ts, frontend/src/main.tsx."
+    "Respect single-actor backend architecture; keep all Motoko logic in backend/main.mo.",
+    "Do not modify files under frontend immutablePaths (including frontend/src/hooks/useActor.ts and frontend/src/hooks/useInternetIdentity.ts).",
+    "Use English for any user-facing text."
   ],
   "nonGoals": [
-    "Do not add new authentication providers (Internet Identity only).",
-    "Do not introduce external databases or third-party backend services.",
-    "Do not redesign unrelated parts of the Data Entry form or Reports beyond the specific time formatting and calculation fixes requested."
+    "Recomputing or retroactively backfilling Total Operator Hours for already-saved historical entries (unless explicitly requested later).",
+    "Adding new report types, new fields, or changing report filtering UI unrelated to operator-hours consistency."
   ],
   "imageRequirements": {
     "required": [],

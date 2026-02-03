@@ -13,6 +13,15 @@ import type { Principal } from '@icp-sdk/core/principal';
 export type EntryId = bigint;
 export interface Machine { 'id' : MachineId, 'name' : string }
 export type MachineId = bigint;
+export interface NewMachineFields { 'name' : string }
+export interface NewOperatorFields { 'name' : string }
+export interface NewProductFields {
+  'cycleTime' : bigint,
+  'name' : string,
+  'loadingTime' : bigint,
+  'unloadingTime' : bigint,
+  'piecesPerCycle' : bigint,
+}
 export interface Operator { 'id' : OperatorId, 'name' : string }
 export type OperatorId = bigint;
 export interface Product {
@@ -85,6 +94,9 @@ export interface _SERVICE {
   >,
   '_caffeineStorageUpdateGatewayPrincipals' : ActorMethod<[], undefined>,
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
+  'addMachine' : ActorMethod<[NewMachineFields], undefined>,
+  'addOperator' : ActorMethod<[NewOperatorFields], undefined>,
+  'addProduct' : ActorMethod<[NewProductFields], undefined>,
   'addProductionEntry' : ActorMethod<
     [
       MachineId,
@@ -101,12 +113,6 @@ export interface _SERVICE {
     undefined
   >,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
-  'createMachine' : ActorMethod<[string], MachineId>,
-  'createOperator' : ActorMethod<[string], OperatorId>,
-  'createProduct' : ActorMethod<
-    [string, bigint, bigint, bigint, bigint],
-    ProductId
-  >,
   'deleteMachine' : ActorMethod<[MachineId], undefined>,
   'deleteOperator' : ActorMethod<[OperatorId], undefined>,
   'deleteProduct' : ActorMethod<[ProductId], undefined>,

@@ -1,77 +1,47 @@
 {
   "kind": "coverage_report",
   "version": "1.0",
-  "generatedAt": "2026-02-03T10:41:16.672Z",
+  "generatedAt": "2026-02-03T17:49:50.286Z",
   "sources": {
     "buildRequest": true,
     "implementationPlan": true
   },
   "requirements": {
-    "total": 4,
-    "implemented": 3,
+    "total": 2,
+    "implemented": 1,
     "items": [
       {
-        "id": "REQ-1",
-        "summary": "Update the Data Entry page to display “Cycle Time for 10 Hour Target” and “Cycle Time for 12 Hour Target” consistently in minutes and seconds (e.g., “0m 45s”, “1m 05s”), not seconds-only, including correct rounding and minute/second carry (e.g., 59.6s should display as “1m 00s”).",
-        "status": "implemented",
-        "plannedFiles": [
-          "frontend/src/utils/timeFormat.ts",
-          "frontend/src/pages/DataEntryPage.tsx"
-        ],
-        "matchedFiles": [
-          "frontend/src/utils/timeFormat.ts",
-          "frontend/src/pages/DataEntryPage.tsx"
-        ]
-      },
-      {
-        "id": "REQ-2",
-        "summary": "Fix Total Operator Hours so it scales with the entered “Quantity Produced” (i.e., it must not behave as if quantity is always 1). Ensure the value shown on the Data Entry page and the value stored in production entries (and therefore shown in Admin → Reports) use the same quantity-based calculation.",
+        "id": "REQ-5",
+        "summary": "Ensure the Total Operator Hours value stored on each ProductionEntry in the backend matches the Total Operator Hours value calculated and shown in the Data Entry form, so that the Reports table/exported reports display the exact same operator-hours value for the same entry.",
         "status": "implemented",
         "plannedFiles": [
           "frontend/src/utils/operatorHours.ts",
-          "frontend/src/pages/DataEntryPage.tsx"
+          "frontend/src/pages/DataEntryPage.tsx",
+          "frontend/src/components/admin/ReportsViewer.tsx"
         ],
         "matchedFiles": [
           "frontend/src/utils/operatorHours.ts",
-          "frontend/src/pages/DataEntryPage.tsx"
+          "frontend/src/components/admin/ReportsViewer.tsx"
         ]
       },
       {
-        "id": "REQ-3",
-        "summary": "Update backend Total Operator Hours computation to align with the frontend duty-time threshold rule: when duty time < 12 hours compute using cycle time for the 10-hour target × quantity produced + downtime; when duty time ≥ 12 hours compute using cycle time for the 12-hour target × quantity produced + downtime. (Do not compute operator hours using the form-entered cycle time when target cycle times are available.)",
+        "id": "REQ-6",
+        "summary": "Align backend operator-hours business logic with the frontend operator-hours utility: (1) use the same duty-time threshold rule as the form (≤ 10 hours uses 10-hour target formula; > 10 hours uses 12-hour target formula), (2) compute Total Operator Hours with fractional precision (minutes/seconds) instead of integer hours-only division, and (3) keep Duty Time lunch-break deduction consistent with the form rule (deduct 30 minutes only when raw duration is < 12 hours).",
         "status": "unknown",
         "plannedFiles": [],
         "matchedFiles": []
-      },
-      {
-        "id": "REQ-4",
-        "summary": "Restore the ability to add/edit/delete Products, Machines, and Operators from the Admin page for a signed-in user. This includes ensuring the backend permissions for create/update/delete operations allow the intended authenticated users to perform Admin CRUD without being blocked by admin-only authorization traps.",
-        "status": "implemented",
-        "plannedFiles": [
-          "frontend/src/components/LoginButton.tsx",
-          "frontend/src/components/Header.tsx",
-          "frontend/src/utils/backendError.ts"
-        ],
-        "matchedFiles": [
-          "frontend/src/components/LoginButton.tsx",
-          "frontend/src/components/Header.tsx",
-          "frontend/src/utils/backendError.ts"
-        ]
       }
     ]
   },
   "changedFiles": [
     "backend/main.mo",
+    "backend/migration.mo",
     "build-request.json",
     "feature_evidence.json",
     "frontend-file-summaries.txt",
     "frontend-implementation-plan.json",
-    "frontend/src/components/Header.tsx",
-    "frontend/src/components/LoginButton.tsx",
-    "frontend/src/pages/DataEntryPage.tsx",
-    "frontend/src/utils/backendError.ts",
+    "frontend/src/components/admin/ReportsViewer.tsx",
     "frontend/src/utils/operatorHours.ts",
-    "frontend/src/utils/timeFormat.ts",
     "project_state.json",
     "scratch/component-selection.json",
     "spec.md",

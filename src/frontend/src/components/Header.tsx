@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import LoginButton from './LoginButton';
 
 export default function Header() {
   const { theme, setTheme } = useTheme();
@@ -20,7 +19,6 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-2">
-          <LoginButton />
           <Button
             variant="ghost"
             size="icon"

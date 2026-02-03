@@ -9,9 +9,9 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">Admin Dashboard</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Master Data & Reports</h2>
         <p className="text-muted-foreground">
-          Manage master data and view production reports
+          Manage products, machines, operators, and view production reports
         </p>
       </div>
 

@@ -17,6 +17,9 @@ export interface Operator {
     name: string;
 }
 export type MachineId = bigint;
+export interface NewOperatorFields {
+    name: string;
+}
 export interface RuntimeType {
     hours: bigint;
     minutes: bigint;
@@ -53,7 +56,17 @@ export interface ProductionEntry {
     totalOperatorHours: TimeInterval;
 }
 export type EntryId = bigint;
+export interface NewProductFields {
+    cycleTime: bigint;
+    name: string;
+    loadingTime: bigint;
+    unloadingTime: bigint;
+    piecesPerCycle: bigint;
+}
 export type ProductId = bigint;
+export interface NewMachineFields {
+    name: string;
+}
 export interface Product {
     id: ProductId;
     cycleTime: bigint;
@@ -72,6 +85,9 @@ export enum UserRole {
     guest = "guest"
 }
 export interface backendInterface {
+    addMachine(fields: NewMachineFields): Promise<void>;
+    addOperator(fields: NewOperatorFields): Promise<void>;
+    addProduct(fields: NewProductFields): Promise<void>;
     addProductionEntry(machineId: MachineId, operatorId: OperatorId, productId: ProductId, cycleTime: {
         minutes: bigint;
         seconds: bigint;
@@ -80,9 +96,6 @@ export interface backendInterface {
         seconds: bigint;
     }, punchIn: bigint, punchOut: bigint, timestamp: bigint | null): Promise<void>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
-    createMachine(name: string): Promise<MachineId>;
-    createOperator(name: string): Promise<OperatorId>;
-    createProduct(name: string, loadingTime: bigint, unloadingTime: bigint, piecesPerCycle: bigint, cycleTime: bigint): Promise<ProductId>;
     deleteMachine(id: MachineId): Promise<void>;
     deleteOperator(id: OperatorId): Promise<void>;
     deleteProduct(id: ProductId): Promise<void>;

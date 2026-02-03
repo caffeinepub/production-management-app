@@ -1,63 +1,45 @@
 {
   "kind": "spec_vs_diff_report",
   "version": "1.0",
-  "generatedAt": "2026-02-03T10:41:16.631Z",
-  "summary": "REQ-1 appears implemented via a new shared minutes+seconds formatter and Data Entry page wiring. Frontend quantity-scaling logic for Total Operator Hours is present, but the diff does not provide clear evidence that the saved/stored backend value matches the frontend display (REQ-2/REQ-3). Admin CRUD permission restoration (REQ-4) is not evidenced; backend still shows admin-only authorization for product creation in the visible portion of main.mo.",
+  "generatedAt": "2026-02-03T17:49:50.243Z",
+  "summary": "Diff shows frontend report display now uses a shared operator-hours formatter, and backend introduces a migration module and wires it into the actor. However, the diff summary does not provide evidence that backend operator-hours computation/storage logic was updated to match the frontend’s threshold and fractional-precision rules, which is central to REQ-5/REQ-6.",
   "missing_requirements": [
     {
-      "id": "REQ-2",
-      "requirement": "Fix Total Operator Hours so it scales with the entered “Quantity Produced”, and ensure the value shown on Data Entry and the value stored in production entries (and shown in Admin → Reports) use the same quantity-based calculation.",
-      "reason": "While frontend calculation code exists, the diff does not show the save-path wiring that ensures the backend-stored ProductionEntry.totalOperatorHours matches the frontend-displayed value at save time, nor any report-side confirmation.",
+      "id": "REQ-5",
+      "requirement": "Ensure the Total Operator Hours value stored on each ProductionEntry in the backend matches the Total Operator Hours value calculated and shown in the Data Entry form, so that the Reports table/exported reports display the exact same operator-hours value for the same entry.",
+      "reason": "The diff summary shows a frontend display/formatter change in ReportsViewer, but does not show any backend changes to how ProductionEntry.totalOperatorHours is computed and stored when creating new entries. Without backend computation changes, stored values may still differ from the form’s calculation.",
+      "evidence": [
+        "frontend/src/components/admin/ReportsViewer.tsx",
+        "backend/main.mo (truncated; no operator-hours computation shown)"
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "requirement": "Align backend operator-hours business logic with the frontend operator-hours utility (≤10h uses 10-hour target, >10h uses 12-hour target; compute with fractional minutes/seconds; deduct 30 minutes only when raw duration is <12h).",
+      "reason": "Although the frontend utility file reflects the stated rules, the diff summary does not show corresponding backend logic updates in backend/main.mo to apply the same threshold rule, fractional precision, and strict <12h lunch deduction when persisting entries.",
       "evidence": [
         "frontend/src/utils/operatorHours.ts",
-        "frontend/src/pages/DataEntryPage.tsx (truncated)",
-        "backend/main.mo (truncated)"
-      ]
-    },
-    {
-      "id": "REQ-3",
-      "requirement": "Update backend Total Operator Hours computation to use duty-time threshold rule (10h target when duty<12h, 12h target when duty≥12h) × quantity produced + downtime, and not use form-entered cycle time when target cycle times are available.",
-      "reason": "The provided backend diff excerpt only shows authorization/profile/product management sections and does not include any visible changes to ProductionEntry storage or totalOperatorHours computation.",
-      "evidence": [
-        "backend/main.mo (truncated)"
-      ]
-    },
-    {
-      "id": "REQ-4",
-      "requirement": "Restore add/edit/delete of Products, Machines, and Operators from Admin for signed-in users by ensuring backend permissions allow intended authenticated users (not blocked by admin-only traps).",
-      "reason": "The backend code shown still enforces admin-only permission checks for product creation (and likely update/delete), and the diff summary does not show any corresponding permission relaxation or role/permission changes for CRUD methods across Products/Machines/Operators.",
-      "evidence": [
-        "backend/main.mo (truncated): createProduct checks #admin"
+        "backend/main.mo (truncated; no matching backend calculation code shown)"
       ]
     }
   ],
   "hallucinated_features": [
     {
-      "description": "Added a new header login/logout UI component (LoginButton) and integrated it into the Header.",
-      "reason": "The BuildRequest focuses on cycle-time formatting, operator-hours scaling/alignment, and restoring Admin CRUD; it does not request adding a new global login button component/UI.",
+      "description": "Added a backend migration module and wired migration.run into the canister actor.",
+      "reason": "The BuildRequest explicitly prefers no backend schema/state-shape migration unless strictly required, and the request focuses on computation logic changes when creating entries. The diff adds backend/migration.mo and includes it in backend/main.mo, which is not clearly required by REQ-5/REQ-6 based on the provided diff summary.",
       "evidence": [
-        "frontend/src/components/LoginButton.tsx",
-        "frontend/src/components/Header.tsx"
-      ]
-    },
-    {
-      "description": "Added backend error normalization utility for friendlier authorization/validation messages.",
-      "reason": "Not explicitly requested by any requirement; it is additional UX/error-handling functionality beyond the specified fixes.",
-      "evidence": [
-        "frontend/src/utils/backendError.ts"
+        "backend/migration.mo",
+        "backend/main.mo (with migration = Migration.run)"
       ]
     }
   ],
-  "confidence": 0.62,
+  "confidence": 0.72,
   "changed_files": [
     "backend/main.mo",
+    "backend/migration.mo",
     "frontend-file-summaries.txt",
-    "frontend/src/components/Header.tsx",
-    "frontend/src/components/LoginButton.tsx",
-    "frontend/src/pages/DataEntryPage.tsx",
-    "frontend/src/utils/backendError.ts",
+    "frontend/src/components/admin/ReportsViewer.tsx",
     "frontend/src/utils/operatorHours.ts",
-    "frontend/src/utils/timeFormat.ts",
     "project_state.json"
   ]
 }

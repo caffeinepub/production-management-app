@@ -1,6 +1,6 @@
 import Map "mo:core/Map";
-import Nat "mo:core/Nat";
 import Int "mo:core/Int";
+import Nat "mo:core/Nat";
 import Array "mo:core/Array";
 import Time "mo:core/Time";
 import Order "mo:core/Order";
@@ -8,18 +8,19 @@ import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
 import MixinStorage "blob-storage/Mixin";
 import Float "mo:core/Float";
-
 import MixinAuthorization "authorization/MixinAuthorization";
 import AccessControl "authorization/access-control";
+import Migration "migration";
 
+(with migration = Migration.run)
 actor {
-  include MixinStorage();
-
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
 
+  include MixinStorage();
+
   ///////////////////////////////
-  // User Profile Management  //
+  // User Profile Management   //
   /////////////////////////////
 
   public type UserProfile = {
@@ -37,9 +38,6 @@ actor {
   };
 
   public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can access profiles");
-    };
     if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
       Runtime.trap("Unauthorized: Can only view your own profile");
     };
@@ -64,10 +62,10 @@ actor {
   public type Product = {
     id : ProductId;
     name : Text;
-    loadingTime : Nat; // in seconds
-    unloadingTime : Nat; // in seconds
+    loadingTime : Nat;
+    unloadingTime : Nat;
     piecesPerCycle : Nat;
-    cycleTime : Nat; // in seconds
+    cycleTime : Nat;
   };
 
   module Product {
@@ -88,31 +86,40 @@ actor {
     };
   };
 
-  public shared ({ caller }) func createProduct(name : Text, loadingTime : Nat, unloadingTime : Nat, piecesPerCycle : Nat, cycleTime : Nat) : async ProductId {
+  public type NewProductFields = {
+    name : Text;
+    loadingTime : Nat;
+    unloadingTime : Nat;
+    piecesPerCycle : Nat;
+    cycleTime : Nat;
+  };
+
+  public shared ({ caller }) func addProduct(fields : NewProductFields) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can create products");
+      Runtime.trap("Unauthorized: Only admins can add products");
     };
-    if (products.values().toArray().any(func(p) { p.name == name })) {
+
+    if (products.values().toArray().any(func(p) { p.name == fields.name })) {
       Runtime.trap("Product name must be unique");
     };
 
     let product : Product = {
       id = nextProductId;
-      name;
-      loadingTime;
-      unloadingTime;
-      piecesPerCycle;
-      cycleTime;
+      name = fields.name;
+      loadingTime = fields.loadingTime;
+      unloadingTime = fields.unloadingTime;
+      piecesPerCycle = fields.piecesPerCycle;
+      cycleTime = fields.cycleTime;
     };
-    products.add(nextProductId, product);
+    products.add(product.id, product);
     nextProductId += 1;
-    product.id;
   };
 
   public shared ({ caller }) func updateProduct(id : ProductId, name : Text, loadingTime : Nat, unloadingTime : Nat, piecesPerCycle : Nat, cycleTime : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can update products");
     };
+
     if (products.values().toArray().any(func(p) { p.id != id and p.name == name })) {
       Runtime.trap("Product name must be unique");
     };
@@ -140,23 +147,23 @@ actor {
     products.remove(id);
   };
 
-  public query ({ caller = _ }) func getAllProducts() : async [Product] {
+  public query func getAllProducts() : async [Product] {
     products.values().toArray();
   };
 
-  public query ({ caller = _ }) func getAllProductsSortedByName() : async [Product] {
+  public query func getAllProductsSortedByName() : async [Product] {
     products.values().toArray().sort(Product.compareByName);
   };
 
-  public query ({ caller = _ }) func getAllProductsSortedByLoadingTime() : async [Product] {
+  public query func getAllProductsSortedByLoadingTime() : async [Product] {
     products.values().toArray().sort(Product.compareByLoadingTime);
   };
 
-  public query ({ caller = _ }) func getAllProductsSortedByUnloadingTime() : async [Product] {
+  public query func getAllProductsSortedByUnloadingTime() : async [Product] {
     products.values().toArray().sort(Product.compareByUnloadingTime);
   };
 
-  public query ({ caller = _ }) func getAllProductsSortedByPiecesPerCycle() : async [Product] {
+  public query func getAllProductsSortedByPiecesPerCycle() : async [Product] {
     products.values().toArray().sort(Product.compareByPiecesPerCycle);
   };
 
@@ -182,27 +189,32 @@ actor {
     };
   };
 
-  public shared ({ caller }) func createMachine(name : Text) : async MachineId {
+  public type NewMachineFields = {
+    name : Text;
+  };
+
+  public shared ({ caller }) func addMachine(fields : NewMachineFields) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can create machines");
+      Runtime.trap("Unauthorized: Only admins can add machines");
     };
-    if (machines.values().toArray().any(func(m) { m.name == name })) {
+
+    if (machines.values().toArray().any(func(m) { m.name == fields.name })) {
       Runtime.trap("Machine name must be unique");
     };
 
     let machine : Machine = {
       id = nextMachineId;
-      name;
+      name = fields.name;
     };
-    machines.add(nextMachineId, machine);
+    machines.add(machine.id, machine);
     nextMachineId += 1;
-    machine.id;
   };
 
   public shared ({ caller }) func updateMachine(id : MachineId, name : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can update machines");
     };
+
     if (machines.values().toArray().any(func(m) { m.id != id and m.name == name })) {
       Runtime.trap("Machine name must be unique");
     };
@@ -226,11 +238,11 @@ actor {
     machines.remove(id);
   };
 
-  public query ({ caller = _ }) func getAllMachines() : async [Machine] {
+  public query func getAllMachines() : async [Machine] {
     machines.values().toArray();
   };
 
-  public query ({ caller = _ }) func getAllMachinesSortedByName() : async [Machine] {
+  public query func getAllMachinesSortedByName() : async [Machine] {
     machines.values().toArray().sort(Machine.compareByName);
   };
 
@@ -256,27 +268,32 @@ actor {
     };
   };
 
-  public shared ({ caller }) func createOperator(name : Text) : async OperatorId {
+  public type NewOperatorFields = {
+    name : Text;
+  };
+
+  public shared ({ caller }) func addOperator(fields : NewOperatorFields) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can create operators");
+      Runtime.trap("Unauthorized: Only admins can add operators");
     };
-    if (operators.values().toArray().any(func(o) { o.name == name })) {
+
+    if (operators.values().toArray().any(func(o) { o.name == fields.name })) {
       Runtime.trap("Operator name must be unique");
     };
 
     let operator : Operator = {
       id = nextOperatorId;
-      name;
+      name = fields.name;
     };
-    operators.add(nextOperatorId, operator);
+    operators.add(operator.id, operator);
     nextOperatorId += 1;
-    operator.id;
   };
 
   public shared ({ caller }) func updateOperator(id : OperatorId, name : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can update operators");
     };
+
     if (operators.values().toArray().any(func(o) { o.id != id and o.name == name })) {
       Runtime.trap("Operator name must be unique");
     };
@@ -300,11 +317,11 @@ actor {
     operators.remove(id);
   };
 
-  public query ({ caller = _ }) func getAllOperators() : async [Operator] {
+  public query func getAllOperators() : async [Operator] {
     operators.values().toArray();
   };
 
-  public query ({ caller = _ }) func getAllOperatorsSortedByName() : async [Operator] {
+  public query func getAllOperatorsSortedByName() : async [Operator] {
     operators.values().toArray().sort(Operator.compareByName);
   };
 
@@ -381,9 +398,6 @@ actor {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can add production entries");
     };
-    if (quantityProduced == 0) {
-      Runtime.trap("Quantity produced must be at least 1");
-    };
 
     let product = switch (products.get(productId)) {
       case (null) { Runtime.trap("Product not found") };
@@ -396,33 +410,25 @@ actor {
     };
 
     let cycleTimeInSeconds = (cycleTime.minutes * 60) + cycleTime.seconds;
-
     let numberOfPartsProduced = product.piecesPerCycle * quantityProduced;
     let downtimeInSeconds = (downtimeTime.minutes * 60) + downtimeTime.seconds;
-
     let tenHourTarget = calculateTenHourTarget(cycleTimeInSeconds, product.loadingTime, product.unloadingTime);
     let twelveHourTarget = calculateTwelveHourTarget(cycleTimeInSeconds, product.loadingTime, product.unloadingTime);
 
-    let totalRunTimeSeconds = calculateTotalRunTimeSeconds(
-      quantityProduced,
-      cycleTimeInSeconds,
-      product.loadingTime,
-      product.unloadingTime,
-      downtimeInSeconds,
-      tenHourTarget,
-      twelveHourTarget,
-    );
+    let totalRunTime = {
+      hours = 0;
+      minutes = 0;
+      seconds = 0;
+    };
 
-    let totalRunTime = convertSecondsToRuntime(totalRunTimeSeconds);
-
-    let dutyTime = calculateDutyTime(punchIn, punchOut);
+    // Calculate adjusted duty time
+    let dutyTime = calculateAdjustedDutyTime(punchIn, punchOut);
+    let dutyTimeSeconds = convertTimeIntervalToSeconds(dutyTime);
     let totalOperatorHours = calculateTotalOperatorHours(
-      cycleTimeInSeconds,
-      dutyTime,
+      dutyTimeSeconds,
       quantityProduced,
       tenHourTarget,
       twelveHourTarget,
-      downtimeInSeconds,
     );
 
     let entry : ProductionEntry = {
@@ -449,29 +455,8 @@ actor {
     nextEntryId += 1;
   };
 
-  func calculateTotalRunTimeSeconds(
-    quantityProduced : Nat,
-    formCycleTime : Nat,
-    loadingTime : Nat,
-    unloadingTime : Nat,
-    downtimeTime : Nat,
-    tenHourTarget : Nat,
-    twelveHourTarget : Nat,
-  ) : Nat {
-    let totalCycleTime = formCycleTime + loadingTime + unloadingTime;
-    let totalRunTime = totalCycleTime * quantityProduced + downtimeTime;
-
-    if (quantityProduced <= tenHourTarget) {
-      return totalRunTime;
-    } else if (quantityProduced > tenHourTarget and quantityProduced <= twelveHourTarget) {
-      return totalRunTime;
-    } else {
-      return totalRunTime;
-    };
-  };
-
   func calculateTenHourTarget(formCycleTimeSeconds : Nat, loadingTime : Nat, unloadingTime : Nat) : Nat {
-    let productiveTimeInSeconds : Float = 34200.0;
+    let productiveTimeInSeconds : Float = 34200.0; // 9.5 hours
     let totalCycleTime = formCycleTimeSeconds + loadingTime + unloadingTime;
 
     if (totalCycleTime == 0) {
@@ -479,13 +464,13 @@ actor {
     };
 
     let totalTimeAsFloat : Float = Int.fromNat(totalCycleTime).toFloat();
-    let targetFloat : Float = (productiveTimeInSeconds / totalTimeAsFloat) * 0.95;
+    let targetFloat : Float = productiveTimeInSeconds / totalTimeAsFloat;
     let rounded = Float.nearest(targetFloat);
     Int.abs(rounded.toInt());
   };
 
   func calculateTwelveHourTarget(formCycleTimeSeconds : Nat, loadingTime : Nat, unloadingTime : Nat) : Nat {
-    let productiveTimeInSeconds : Float = 39600.0;
+    let productiveTimeInSeconds : Float = 39600.0; // 11 hours
     let totalCycleTime = formCycleTimeSeconds + loadingTime + unloadingTime;
 
     if (totalCycleTime == 0) {
@@ -493,63 +478,84 @@ actor {
     };
 
     let totalTimeAsFloat : Float = Int.fromNat(totalCycleTime).toFloat();
-    let targetFloat : Float = (productiveTimeInSeconds / totalTimeAsFloat) * 0.95;
+    let targetFloat : Float = productiveTimeInSeconds / totalTimeAsFloat;
     let rounded = Float.nearest(targetFloat);
     Int.abs(rounded.toInt());
   };
 
-  func calculateDutyTime(punchIn : Int, punchOut : Int) : TimeInterval {
-    if (punchOut <= punchIn) {
-      return { hours = 0; minutes = 0; seconds = 0 };
+  func calculateAdjustedDutyTime(punchIn : Int, punchOut : Int) : TimeInterval {
+    // Utility function for converting seconds to hours, minutes, seconds
+    func secondsToHMS(totalSeconds : Int) : TimeInterval {
+      let totalSecondsNat = Int.abs(totalSeconds);
+      let hours = (totalSecondsNat / 3600).toNat();
+      let minutes = ((totalSecondsNat % 3600) / 60).toNat();
+      let seconds = (totalSecondsNat % 60).toNat();
+      { hours; minutes; seconds };
     };
 
-    let totalSeconds = (punchOut - punchIn) / 1_000_000_000;
-    let hours = (totalSeconds / 3600).toNat();
-    let minutes = ((totalSeconds % 3600) / 60).toNat();
-    let seconds = (totalSeconds % 60).toNat();
+    switch (punchOut > punchIn) {
+      case (true) {
+        let durationSeconds = (punchOut - punchIn) / 1_000_000_000;
+        let hours = (durationSeconds / 3600).toNat();
+        let remainder = Int.abs(durationSeconds % 3600);
+        let totalDurationMinutes = (hours * 60).toInt() + (remainder / 60);
 
-    { hours; minutes; seconds };
+        // Subtract 30 minutes only if the original duration is less than 12 hours
+        switch (durationSeconds >= 43200) {
+          case (true) { secondsToHMS(durationSeconds) };
+          case (false) {
+            switch (totalDurationMinutes >= 30) {
+              case (true) {
+                secondsToHMS(durationSeconds - 1800);
+              };
+              case (false) { secondsToHMS(durationSeconds) };
+            };
+          };
+        };
+      };
+      case (false) { { hours = 0; minutes = 0; seconds = 0 } };
+    };
   };
 
   func calculateTotalOperatorHours(
-    cycleTimeInSeconds : Nat,
-    dutyTime : TimeInterval,
+    dutyTimeSeconds : Nat,
     quantityProduced : Nat,
     tenHourTarget : Nat,
     twelveHourTarget : Nat,
-    downtimeInSeconds : Nat,
   ) : TimeInterval {
-    let dutyTimeInSeconds = (dutyTime.hours * 3600) + (dutyTime.minutes * 60) + dutyTime.seconds;
-
-    var totalOperatorSeconds : Nat = 0;
-
-    if (dutyTimeInSeconds < (12 * 3600)) {
-      // Use 10-hour target cycle time
-      totalOperatorSeconds := (cycleTimeInSeconds * quantityProduced) + downtimeInSeconds;
-    } else {
-      // Use 12-hour target cycle time
-      totalOperatorSeconds := (cycleTimeInSeconds * quantityProduced) + downtimeInSeconds;
+    var targetHours : Nat = 10;
+    if (dutyTimeSeconds >= 43200) { // 12 hours
+      targetHours := 12;
     };
 
-    let hours = totalOperatorSeconds / 3600;
-    let minutes = (totalOperatorSeconds % 3600) / 60;
-    let seconds = totalOperatorSeconds % 60;
+    let target = switch targetHours {
+      case 10 { tenHourTarget };
+      case 12 { twelveHourTarget };
+      case (_) { tenHourTarget };
+    };
+
+    if (target == 0) {
+      return { hours = 0; minutes = 0; seconds = 0 };
+    };
+
+    let totalOperatorHours = (quantityProduced * targetHours * 3600) / target;
+    let hours = totalOperatorHours / 3600;
+    let remainder = totalOperatorHours % 3600;
+    let minutes = remainder / 60;
+    let seconds = remainder % 60;
 
     { hours; minutes; seconds };
   };
 
-  func convertSecondsToRuntime(totalSeconds : Nat) : RuntimeType {
-    let hours = totalSeconds / 3600;
-    let minutes = (totalSeconds % 3600) / 60;
-    let seconds = totalSeconds % 60;
-    { hours; minutes; seconds };
+  func convertTimeIntervalToSeconds(interval : TimeInterval) : Nat {
+    (interval.hours * 3600) + (interval.minutes * 60) + interval.seconds;
   };
 
-  public query ({ caller = _ }) func getAllProductionEntries() : async [ProductionEntry] {
+  public query func getAllProductionEntries() : async [ProductionEntry] {
     entries.values().toArray();
   };
 
-  public query ({ caller = _ }) func getProductionEntriesByDateRange(startDate : Int, endDate : Int) : async [ProductionEntry] {
+  public query func getProductionEntriesByDateRange(startDate : Int, endDate : Int) : async [ProductionEntry] {
     entries.values().toArray().filter(
       func(entry) {
         entry.timestamp >= startDate and entry.timestamp <= endDate
@@ -557,7 +563,7 @@ actor {
     );
   };
 
-  public query ({ caller = _ }) func getProductionEntriesByOperator(operatorId : OperatorId) : async [ProductionEntry] {
+  public query func getProductionEntriesByOperator(operatorId : OperatorId) : async [ProductionEntry] {
     entries.values().toArray().filter(
       func(entry) {
         entry.operatorId == operatorId
@@ -565,7 +571,7 @@ actor {
     );
   };
 
-  public query ({ caller = _ }) func getProductionEntriesByProduct(productId : ProductId) : async [ProductionEntry] {
+  public query func getProductionEntriesByProduct(productId : ProductId) : async [ProductionEntry] {
     entries.values().toArray().filter(
       func(entry) {
         entry.productId == productId
@@ -577,6 +583,7 @@ actor {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can delete production entries");
     };
+
     switch (entries.get(entryId)) {
       case (null) { Runtime.trap("Entry not found") };
       case (?_) {
@@ -585,13 +592,11 @@ actor {
     };
   };
 
-  // Get all products
-  public query ({ caller = _ }) func getAllProductsUnsorted() : async [Product] {
+  public query func getAllProductsUnsorted() : async [Product] {
     products.values().toArray();
   };
 
-  // Dynamic Sorting for Products
-  public query ({ caller = _ }) func getSortedProducts(sortBy : Text) : async [Product] {
+  public query func getSortedProducts(sortBy : Text) : async [Product] {
     let productsArray = products.values().toArray();
     switch (sortBy) {
       case ("name") { productsArray.sort(Product.compareByName) };
@@ -602,8 +607,7 @@ actor {
     };
   };
 
-  // Dynamic Sorting for Production Entries
-  public query ({ caller = _ }) func getSortedProductionEntries(sortBy : Text) : async [ProductionEntry] {
+  public query func getSortedProductionEntries(sortBy : Text) : async [ProductionEntry] {
     let entriesArray = entries.values().toArray();
     switch (sortBy) {
       case ("timestamp") { entriesArray.sort(ProductionEntry.compareByTimestamp) };

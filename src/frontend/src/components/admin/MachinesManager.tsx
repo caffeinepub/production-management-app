@@ -19,27 +19,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Loader2, Cog, ArrowUpDown, AlertCircle } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Plus, Pencil, Trash2, Loader2, Cog, ArrowUpDown } from 'lucide-react';
 import {
   useGetAllMachines,
   useAddMachine,
   useUpdateMachine,
   useDeleteMachine,
-  useIsAuthenticated,
 } from '../../hooks/useQueries';
 import { useActor } from '../../hooks/useActor';
 import type { Machine, MachineId } from '../../backend';
 import { toast } from 'sonner';
+import MasterDataLoadError from '../MasterDataLoadError';
+import { normalizeBackendError } from '../../utils/backendError';
 
 type SortField = 'name' | 'id';
 
 export default function MachinesManager() {
   const { actor } = useActor();
-  const isAuthenticated = useIsAuthenticated();
   const [sortBy, setSortBy] = useState<SortField>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const { data: machines = [], isLoading } = useGetAllMachines('name');
+  const { data: machines = [], isLoading, isFetched, error, refetch } = useGetAllMachines('name');
   const addMachine = useAddMachine();
   const updateMachine = useUpdateMachine();
   const deleteMachine = useDeleteMachine();
@@ -81,11 +80,6 @@ export default function MachinesManager() {
       return;
     }
     
-    if (!isAuthenticated) {
-      toast.error('Please sign in to manage machines');
-      return;
-    }
-    
     if (machine) {
       setEditingMachine(machine);
       setMachineName(machine.name);
@@ -105,11 +99,6 @@ export default function MachinesManager() {
   const handleSave = async () => {
     if (!actor) {
       toast.error('Please wait for the system to initialize');
-      return;
-    }
-
-    if (!isAuthenticated) {
-      toast.error('Please sign in to save changes');
       return;
     }
 
@@ -141,11 +130,6 @@ export default function MachinesManager() {
       return;
     }
 
-    if (!isAuthenticated) {
-      toast.error('Please sign in to delete machines');
-      return;
-    }
-
     if (confirm('Are you sure you want to delete this machine?')) {
       try {
         await deleteMachine.mutateAsync(id);
@@ -156,7 +140,8 @@ export default function MachinesManager() {
   };
 
   const isSaving = addMachine.isPending || updateMachine.isPending;
-  const canWrite = actor && isAuthenticated;
+  const showInitialLoading = isLoading && !isFetched;
+  const hasError = error && isFetched;
 
   return (
     <>
@@ -167,26 +152,24 @@ export default function MachinesManager() {
               <CardTitle>Machines</CardTitle>
               <CardDescription>Manage production machines</CardDescription>
             </div>
-            <Button onClick={() => handleOpenDialog()} className="gap-2" disabled={isSaving || !canWrite}>
+            <Button onClick={() => handleOpenDialog()} className="gap-2" disabled={isSaving || !actor}>
               <Plus className="h-4 w-4" />
               Add Machine
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          {!isAuthenticated && (
-            <Alert className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Please sign in to add, edit, or delete machines. You can view existing machines without signing in.
-              </AlertDescription>
-            </Alert>
-          )}
-          {isLoading ? (
+          {showInitialLoading ? (
             <div className="text-center py-12">
               <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-3" />
               <p className="text-muted-foreground">Loading machines...</p>
             </div>
+          ) : hasError ? (
+            <MasterDataLoadError 
+              title="Failed to load machines"
+              message={normalizeBackendError(error)}
+              onRetry={() => refetch()}
+            />
           ) : machines.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Cog className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -234,7 +217,7 @@ export default function MachinesManager() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleOpenDialog(machine)}
-                            disabled={deleteMachine.isPending || !canWrite}
+                            disabled={deleteMachine.isPending || !actor}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -242,7 +225,7 @@ export default function MachinesManager() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDelete(machine.id)}
-                            disabled={deleteMachine.isPending || !canWrite}
+                            disabled={deleteMachine.isPending || !actor}
                           >
                             {deleteMachine.isPending ? (
                               <Loader2 className="h-4 w-4 animate-spin text-destructive" />

@@ -10,6 +10,9 @@ import type {
   OperatorId,
   ProductionEntry,
   EntryId,
+  NewProductFields,
+  NewMachineFields,
+  NewOperatorFields,
 } from '../backend';
 import { toast } from 'sonner';
 import { normalizeBackendError } from '../utils/backendError';
@@ -20,14 +23,34 @@ export function useIsAuthenticated() {
   return !!identity && !identity.getPrincipal().isAnonymous();
 }
 
-// Master Data Queries with Sorting
+// Check if user is admin (optional, non-blocking)
+export function useIsAdmin() {
+  const { actor, isFetching } = useActor();
+  
+  return useQuery<boolean>({
+    queryKey: ['isAdmin'],
+    queryFn: async () => {
+      if (!actor) return false;
+      try {
+        return await actor.isCallerAdmin();
+      } catch {
+        return false;
+      }
+    },
+    enabled: !!actor && !isFetching,
+    staleTime: 60000,
+    retry: false,
+  });
+}
+
+// Master Data Queries with optimized caching for performance
 export function useGetAllProducts(sortBy: 'id' | 'name' | 'loadingTime' | 'unloadingTime' | 'piecesPerCycle' = 'id') {
   const { actor, isFetching } = useActor();
 
   return useQuery<Product[]>({
     queryKey: ['products', sortBy],
     queryFn: async () => {
-      if (!actor) return [];
+      if (!actor) throw new Error('Actor not available');
       switch (sortBy) {
         case 'id':
           return actor.getAllProducts();
@@ -44,7 +67,10 @@ export function useGetAllProducts(sortBy: 'id' | 'name' | 'loadingTime' | 'unloa
       }
     },
     enabled: !!actor && !isFetching,
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000, // 5 minutes - master data changes infrequently
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    placeholderData: (previousData) => previousData, // Keep showing old data during refresh
+    retry: 1,
   });
 }
 
@@ -54,14 +80,17 @@ export function useGetAllMachines(sortBy: 'id' | 'name' = 'id') {
   return useQuery<Machine[]>({
     queryKey: ['machines', sortBy],
     queryFn: async () => {
-      if (!actor) return [];
+      if (!actor) throw new Error('Actor not available');
       if (sortBy === 'name') {
         return actor.getAllMachinesSortedByName();
       }
       return actor.getAllMachines();
     },
     enabled: !!actor && !isFetching,
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000,
+    placeholderData: (previousData) => previousData,
+    retry: 1,
   });
 }
 
@@ -71,27 +100,28 @@ export function useGetAllOperators(sortBy: 'id' | 'name' = 'id') {
   return useQuery<Operator[]>({
     queryKey: ['operators', sortBy],
     queryFn: async () => {
-      if (!actor) return [];
+      if (!actor) throw new Error('Actor not available');
       if (sortBy === 'name') {
         return actor.getAllOperatorsSortedByName();
       }
       return actor.getAllOperators();
     },
     enabled: !!actor && !isFetching,
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000,
+    placeholderData: (previousData) => previousData,
+    retry: 1,
   });
 }
 
-// Product Mutations
+// Product Mutations (no authentication checks)
 export function useAddProduct() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
-  const isAuthenticated = useIsAuthenticated();
 
   return useMutation({
     mutationFn: async (data: { name: string; loadingTime: number; unloadingTime: number; piecesPerCycle: number; cycleTime: number }) => {
       if (!actor) throw new Error('Actor not available');
-      if (!isAuthenticated) throw new Error('Unauthorized: Only authenticated users can create products');
       
       const existingProducts = queryClient.getQueryData<Product[]>(['products', 'id']) || 
                                queryClient.getQueryData<Product[]>(['products', 'name']) || [];
@@ -100,12 +130,21 @@ export function useAddProduct() {
         throw new Error('A product with this name already exists');
       }
       
-      return actor.createProduct(data.name, BigInt(data.loadingTime), BigInt(data.unloadingTime), BigInt(data.piecesPerCycle), BigInt(data.cycleTime));
+      const fields: NewProductFields = {
+        name: data.name,
+        loadingTime: BigInt(data.loadingTime),
+        unloadingTime: BigInt(data.unloadingTime),
+        piecesPerCycle: BigInt(data.piecesPerCycle),
+        cycleTime: BigInt(data.cycleTime),
+      };
+      
+      return actor.addProduct(fields);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ 
+    onSuccess: async () => {
+      // Invalidate and refetch ALL product queries (active and inactive)
+      await queryClient.invalidateQueries({ 
         queryKey: ['products'],
-        refetchType: 'active'
+        refetchType: 'all'
       });
       toast.success('Product added successfully');
     },
@@ -119,12 +158,10 @@ export function useAddProduct() {
 export function useUpdateProduct() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
-  const isAuthenticated = useIsAuthenticated();
 
   return useMutation({
     mutationFn: async (data: { id: ProductId; name: string; loadingTime: number; unloadingTime: number; piecesPerCycle: number; cycleTime: number }) => {
       if (!actor) throw new Error('Actor not available');
-      if (!isAuthenticated) throw new Error('Unauthorized: Only authenticated users can update products');
       
       const existingProducts = queryClient.getQueryData<Product[]>(['products', 'id']) || 
                                queryClient.getQueryData<Product[]>(['products', 'name']) || [];
@@ -166,10 +203,10 @@ export function useUpdateProduct() {
     onSuccess: () => {
       toast.success('Product updated successfully');
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ 
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ 
         queryKey: ['products'],
-        refetchType: 'active'
+        refetchType: 'all'
       });
     },
   });
@@ -178,12 +215,10 @@ export function useUpdateProduct() {
 export function useDeleteProduct() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
-  const isAuthenticated = useIsAuthenticated();
 
   return useMutation({
     mutationFn: async (id: ProductId) => {
       if (!actor) throw new Error('Actor not available');
-      if (!isAuthenticated) throw new Error('Unauthorized: Only authenticated users can delete products');
       return actor.deleteProduct(id);
     },
     onMutate: async (deletedId) => {
@@ -213,25 +248,23 @@ export function useDeleteProduct() {
     onSuccess: () => {
       toast.success('Product deleted successfully');
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ 
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ 
         queryKey: ['products'],
-        refetchType: 'active'
+        refetchType: 'all'
       });
     },
   });
 }
 
-// Machine Mutations
+// Machine Mutations (no authentication checks)
 export function useAddMachine() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
-  const isAuthenticated = useIsAuthenticated();
 
   return useMutation({
     mutationFn: async (name: string) => {
       if (!actor) throw new Error('Actor not available');
-      if (!isAuthenticated) throw new Error('Unauthorized: Only authenticated users can create machines');
       
       const existingMachines = queryClient.getQueryData<Machine[]>(['machines', 'id']) || 
                                queryClient.getQueryData<Machine[]>(['machines', 'name']) || [];
@@ -240,12 +273,14 @@ export function useAddMachine() {
         throw new Error('A machine with this name already exists');
       }
       
-      return actor.createMachine(name);
+      const fields: NewMachineFields = { name };
+      return actor.addMachine(fields);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ 
+    onSuccess: async () => {
+      // Invalidate and refetch ALL machine queries (active and inactive)
+      await queryClient.invalidateQueries({ 
         queryKey: ['machines'],
-        refetchType: 'active'
+        refetchType: 'all'
       });
       toast.success('Machine added successfully');
     },
@@ -259,12 +294,10 @@ export function useAddMachine() {
 export function useUpdateMachine() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
-  const isAuthenticated = useIsAuthenticated();
 
   return useMutation({
     mutationFn: async (data: { id: MachineId; name: string }) => {
       if (!actor) throw new Error('Actor not available');
-      if (!isAuthenticated) throw new Error('Unauthorized: Only authenticated users can update machines');
       
       const existingMachines = queryClient.getQueryData<Machine[]>(['machines', 'id']) || 
                                queryClient.getQueryData<Machine[]>(['machines', 'name']) || [];
@@ -302,10 +335,10 @@ export function useUpdateMachine() {
     onSuccess: () => {
       toast.success('Machine updated successfully');
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ 
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ 
         queryKey: ['machines'],
-        refetchType: 'active'
+        refetchType: 'all'
       });
     },
   });
@@ -314,12 +347,10 @@ export function useUpdateMachine() {
 export function useDeleteMachine() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
-  const isAuthenticated = useIsAuthenticated();
 
   return useMutation({
     mutationFn: async (id: MachineId) => {
       if (!actor) throw new Error('Actor not available');
-      if (!isAuthenticated) throw new Error('Unauthorized: Only authenticated users can delete machines');
       return actor.deleteMachine(id);
     },
     onMutate: async (deletedId) => {
@@ -349,25 +380,23 @@ export function useDeleteMachine() {
     onSuccess: () => {
       toast.success('Machine deleted successfully');
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ 
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ 
         queryKey: ['machines'],
-        refetchType: 'active'
+        refetchType: 'all'
       });
     },
   });
 }
 
-// Operator Mutations
+// Operator Mutations (no authentication checks)
 export function useAddOperator() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
-  const isAuthenticated = useIsAuthenticated();
 
   return useMutation({
     mutationFn: async (name: string) => {
       if (!actor) throw new Error('Actor not available');
-      if (!isAuthenticated) throw new Error('Unauthorized: Only authenticated users can create operators');
       
       const existingOperators = queryClient.getQueryData<Operator[]>(['operators', 'id']) || 
                                 queryClient.getQueryData<Operator[]>(['operators', 'name']) || [];
@@ -376,12 +405,14 @@ export function useAddOperator() {
         throw new Error('An operator with this name already exists');
       }
       
-      return actor.createOperator(name);
+      const fields: NewOperatorFields = { name };
+      return actor.addOperator(fields);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ 
+    onSuccess: async () => {
+      // Invalidate and refetch ALL operator queries (active and inactive)
+      await queryClient.invalidateQueries({ 
         queryKey: ['operators'],
-        refetchType: 'active'
+        refetchType: 'all'
       });
       toast.success('Operator added successfully');
     },
@@ -395,12 +426,10 @@ export function useAddOperator() {
 export function useUpdateOperator() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
-  const isAuthenticated = useIsAuthenticated();
 
   return useMutation({
     mutationFn: async (data: { id: OperatorId; name: string }) => {
       if (!actor) throw new Error('Actor not available');
-      if (!isAuthenticated) throw new Error('Unauthorized: Only authenticated users can update operators');
       
       const existingOperators = queryClient.getQueryData<Operator[]>(['operators', 'id']) || 
                                 queryClient.getQueryData<Operator[]>(['operators', 'name']) || [];
@@ -438,10 +467,10 @@ export function useUpdateOperator() {
     onSuccess: () => {
       toast.success('Operator updated successfully');
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ 
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ 
         queryKey: ['operators'],
-        refetchType: 'active'
+        refetchType: 'all'
       });
     },
   });
@@ -450,12 +479,10 @@ export function useUpdateOperator() {
 export function useDeleteOperator() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
-  const isAuthenticated = useIsAuthenticated();
 
   return useMutation({
     mutationFn: async (id: OperatorId) => {
       if (!actor) throw new Error('Actor not available');
-      if (!isAuthenticated) throw new Error('Unauthorized: Only authenticated users can delete operators');
       return actor.deleteOperator(id);
     },
     onMutate: async (deletedId) => {
@@ -485,10 +512,10 @@ export function useDeleteOperator() {
     onSuccess: () => {
       toast.success('Operator deleted successfully');
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ 
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ 
         queryKey: ['operators'],
-        refetchType: 'active'
+        refetchType: 'all'
       });
     },
   });
@@ -510,9 +537,13 @@ export function useAddProductionEntry() {
       downtimeTime: { minutes: bigint; seconds: bigint };
       punchIn: bigint;
       punchOut: bigint;
-      timestamp?: bigint;
+      timestamp?: bigint | null;
     }) => {
       if (!actor) throw new Error('Actor not available');
+      
+      // Pass timestamp as null if undefined, otherwise pass the value
+      const timestampValue = data.timestamp !== undefined ? data.timestamp : null;
+      
       return actor.addProductionEntry(
         data.machineId,
         data.operatorId,
@@ -523,13 +554,13 @@ export function useAddProductionEntry() {
         data.downtimeTime,
         data.punchIn,
         data.punchOut,
-        data.timestamp ?? null
+        timestampValue
       );
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ 
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ 
         queryKey: ['entries'],
-        refetchType: 'active'
+        refetchType: 'all'
       });
       toast.success('Production entry saved successfully');
     },
@@ -613,10 +644,10 @@ export function useDeleteProductionEntry() {
       if (!actor) throw new Error('Actor not available');
       return actor.deleteProductionEntry(id);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ 
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ 
         queryKey: ['entries'],
-        refetchType: 'active'
+        refetchType: 'all'
       });
       toast.success('Production entry deleted successfully');
     },

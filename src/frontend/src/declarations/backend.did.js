@@ -19,6 +19,15 @@ export const _CaffeineStorageRefillResult = IDL.Record({
   'success' : IDL.Opt(IDL.Bool),
   'topped_up_amount' : IDL.Opt(IDL.Nat),
 });
+export const NewMachineFields = IDL.Record({ 'name' : IDL.Text });
+export const NewOperatorFields = IDL.Record({ 'name' : IDL.Text });
+export const NewProductFields = IDL.Record({
+  'cycleTime' : IDL.Nat,
+  'name' : IDL.Text,
+  'loadingTime' : IDL.Nat,
+  'unloadingTime' : IDL.Nat,
+  'piecesPerCycle' : IDL.Nat,
+});
 export const MachineId = IDL.Nat;
 export const OperatorId = IDL.Nat;
 export const ProductId = IDL.Nat;
@@ -97,6 +106,9 @@ export const idlService = IDL.Service({
     ),
   '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+  'addMachine' : IDL.Func([NewMachineFields], [], []),
+  'addOperator' : IDL.Func([NewOperatorFields], [], []),
+  'addProduct' : IDL.Func([NewProductFields], [], []),
   'addProductionEntry' : IDL.Func(
       [
         MachineId,
@@ -114,13 +126,6 @@ export const idlService = IDL.Service({
       [],
     ),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
-  'createMachine' : IDL.Func([IDL.Text], [MachineId], []),
-  'createOperator' : IDL.Func([IDL.Text], [OperatorId], []),
-  'createProduct' : IDL.Func(
-      [IDL.Text, IDL.Nat, IDL.Nat, IDL.Nat, IDL.Nat],
-      [ProductId],
-      [],
-    ),
   'deleteMachine' : IDL.Func([MachineId], [], []),
   'deleteOperator' : IDL.Func([OperatorId], [], []),
   'deleteProduct' : IDL.Func([ProductId], [], []),
@@ -205,6 +210,15 @@ export const idlFactory = ({ IDL }) => {
     'success' : IDL.Opt(IDL.Bool),
     'topped_up_amount' : IDL.Opt(IDL.Nat),
   });
+  const NewMachineFields = IDL.Record({ 'name' : IDL.Text });
+  const NewOperatorFields = IDL.Record({ 'name' : IDL.Text });
+  const NewProductFields = IDL.Record({
+    'cycleTime' : IDL.Nat,
+    'name' : IDL.Text,
+    'loadingTime' : IDL.Nat,
+    'unloadingTime' : IDL.Nat,
+    'piecesPerCycle' : IDL.Nat,
+  });
   const MachineId = IDL.Nat;
   const OperatorId = IDL.Nat;
   const ProductId = IDL.Nat;
@@ -283,6 +297,9 @@ export const idlFactory = ({ IDL }) => {
       ),
     '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+    'addMachine' : IDL.Func([NewMachineFields], [], []),
+    'addOperator' : IDL.Func([NewOperatorFields], [], []),
+    'addProduct' : IDL.Func([NewProductFields], [], []),
     'addProductionEntry' : IDL.Func(
         [
           MachineId,
@@ -300,13 +317,6 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
-    'createMachine' : IDL.Func([IDL.Text], [MachineId], []),
-    'createOperator' : IDL.Func([IDL.Text], [OperatorId], []),
-    'createProduct' : IDL.Func(
-        [IDL.Text, IDL.Nat, IDL.Nat, IDL.Nat, IDL.Nat],
-        [ProductId],
-        [],
-      ),
     'deleteMachine' : IDL.Func([MachineId], [], []),
     'deleteOperator' : IDL.Func([OperatorId], [], []),
     'deleteProduct' : IDL.Func([ProductId], [], []),

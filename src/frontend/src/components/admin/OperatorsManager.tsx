@@ -19,27 +19,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Loader2, Users, ArrowUpDown, AlertCircle } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Plus, Pencil, Trash2, Loader2, Users, ArrowUpDown } from 'lucide-react';
 import {
   useGetAllOperators,
   useAddOperator,
   useUpdateOperator,
   useDeleteOperator,
-  useIsAuthenticated,
 } from '../../hooks/useQueries';
 import { useActor } from '../../hooks/useActor';
 import type { Operator, OperatorId } from '../../backend';
 import { toast } from 'sonner';
+import MasterDataLoadError from '../MasterDataLoadError';
+import { normalizeBackendError } from '../../utils/backendError';
 
 type SortField = 'name' | 'id';
 
 export default function OperatorsManager() {
   const { actor } = useActor();
-  const isAuthenticated = useIsAuthenticated();
   const [sortBy, setSortBy] = useState<SortField>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const { data: operators = [], isLoading } = useGetAllOperators('name');
+  const { data: operators = [], isLoading, isFetched, error, refetch } = useGetAllOperators('name');
   const addOperator = useAddOperator();
   const updateOperator = useUpdateOperator();
   const deleteOperator = useDeleteOperator();
@@ -81,11 +80,6 @@ export default function OperatorsManager() {
       return;
     }
     
-    if (!isAuthenticated) {
-      toast.error('Please sign in to manage operators');
-      return;
-    }
-    
     if (operator) {
       setEditingOperator(operator);
       setOperatorName(operator.name);
@@ -105,11 +99,6 @@ export default function OperatorsManager() {
   const handleSave = async () => {
     if (!actor) {
       toast.error('Please wait for the system to initialize');
-      return;
-    }
-
-    if (!isAuthenticated) {
-      toast.error('Please sign in to save changes');
       return;
     }
 
@@ -141,11 +130,6 @@ export default function OperatorsManager() {
       return;
     }
 
-    if (!isAuthenticated) {
-      toast.error('Please sign in to delete operators');
-      return;
-    }
-
     if (confirm('Are you sure you want to delete this operator?')) {
       try {
         await deleteOperator.mutateAsync(id);
@@ -156,7 +140,8 @@ export default function OperatorsManager() {
   };
 
   const isSaving = addOperator.isPending || updateOperator.isPending;
-  const canWrite = actor && isAuthenticated;
+  const showInitialLoading = isLoading && !isFetched;
+  const hasError = error && isFetched;
 
   return (
     <>
@@ -167,26 +152,24 @@ export default function OperatorsManager() {
               <CardTitle>Operators</CardTitle>
               <CardDescription>Manage production operators</CardDescription>
             </div>
-            <Button onClick={() => handleOpenDialog()} className="gap-2" disabled={isSaving || !canWrite}>
+            <Button onClick={() => handleOpenDialog()} className="gap-2" disabled={isSaving || !actor}>
               <Plus className="h-4 w-4" />
               Add Operator
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          {!isAuthenticated && (
-            <Alert className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Please sign in to add, edit, or delete operators. You can view existing operators without signing in.
-              </AlertDescription>
-            </Alert>
-          )}
-          {isLoading ? (
+          {showInitialLoading ? (
             <div className="text-center py-12">
               <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-3" />
               <p className="text-muted-foreground">Loading operators...</p>
             </div>
+          ) : hasError ? (
+            <MasterDataLoadError 
+              title="Failed to load operators"
+              message={normalizeBackendError(error)}
+              onRetry={() => refetch()}
+            />
           ) : operators.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -234,7 +217,7 @@ export default function OperatorsManager() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleOpenDialog(operator)}
-                            disabled={deleteOperator.isPending || !canWrite}
+                            disabled={deleteOperator.isPending || !actor}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -242,7 +225,7 @@ export default function OperatorsManager() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDelete(operator.id)}
-                            disabled={deleteOperator.isPending || !canWrite}
+                            disabled={deleteOperator.isPending || !actor}
                           >
                             {deleteOperator.isPending ? (
                               <Loader2 className="h-4 w-4 animate-spin text-destructive" />
