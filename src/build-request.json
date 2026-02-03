@@ -1,0 +1,91 @@
+{
+  "kind": "build_request",
+  "title": "Fix cycle-time display formatting, scale Total Operator Hours by Quantity Produced, and restore Admin add/edit",
+  "priority": "normal",
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "Update the Data Entry page to display “Cycle Time for 10 Hour Target” and “Cycle Time for 12 Hour Target” consistently in minutes and seconds (e.g., “0m 45s”, “1m 05s”), not seconds-only, including correct rounding and minute/second carry (e.g., 59.6s should display as “1m 00s”).",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "cycle time for 10 and 12 hour target is showing in seconds only i want in minutes and seconds"
+        ]
+      },
+      "acceptanceCriteria": [
+        "On the Data Entry page, both target cycle time fields always render as \"<minutes>m <seconds>s\" (minutes may be 0).",
+        "Values that round past 60 seconds correctly carry into minutes (no output like “0m 60s”)."
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "text": "Fix Total Operator Hours so it scales with the entered “Quantity Produced” (i.e., it must not behave as if quantity is always 1). Ensure the value shown on the Data Entry page and the value stored in production entries (and therefore shown in Admin → Reports) use the same quantity-based calculation.",
+      "target": "both",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "the time which is coming in total operators hours is coming only for 1 quantity only i want it for the number which is written in the quantity produced"
+        ]
+      },
+      "acceptanceCriteria": [
+        "If Quantity Produced is increased (e.g., from 1 to 10), Total Operator Hours increases proportionally according to the app’s operator-hours rule and includes downtime.",
+        "After saving an entry, Admin → Reports shows Total Operator Hours consistent with what was displayed at save time for the same inputs (no mismatch between frontend display and stored backend values)."
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "text": "Update backend Total Operator Hours computation to align with the frontend duty-time threshold rule: when duty time < 12 hours compute using cycle time for the 10-hour target × quantity produced + downtime; when duty time ≥ 12 hours compute using cycle time for the 12-hour target × quantity produced + downtime. (Do not compute operator hours using the form-entered cycle time when target cycle times are available.)",
+      "target": "backend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "the time which is coming in total operators hours is coming only for 1 quantity only i want it for the number which is written in the quantity produced"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Backend-stored ProductionEntry.totalOperatorHours reflects target-cycle-time-based operator-hours logic and includes downtime.",
+        "Backend calculation uses Quantity Produced in the multiplication (not a constant 1).",
+        "ReportsViewer aggregates Total Operator Hours correctly across multiple saved entries because each entry stores the correct per-entry operator hours."
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "text": "Restore the ability to add/edit/delete Products, Machines, and Operators from the Admin page for a signed-in user. This includes ensuring the backend permissions for create/update/delete operations allow the intended authenticated users to perform Admin CRUD without being blocked by admin-only authorization traps.",
+      "target": "both",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "please this time make allow me the add things in admin page"
+        ]
+      },
+      "acceptanceCriteria": [
+        "When signed in, the Admin page “Add Product / Add Machine / Add Operator” actions successfully create items and they appear in their respective tables after save.",
+        "When signed in, Admin edit and delete actions work for Products/Machines/Operators without authorization errors.",
+        "If the user is not signed in, Admin write actions remain disabled and/or show the existing sign-in guidance (no change required to read-only viewing)."
+      ]
+    }
+  ],
+  "constraints": [
+    "Backend must remain a single Motoko actor in backend/main.mo (no additional backend services).",
+    "Do not edit files under frontend/src/components/ui (compose them only).",
+    "Do not edit frontend immutable paths: frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useInternetIdentity.tsx, frontend/src/hooks/useActor.ts, frontend/src/main.tsx."
+  ],
+  "nonGoals": [
+    "Do not add new authentication providers (Internet Identity only).",
+    "Do not introduce external databases or third-party backend services.",
+    "Do not redesign unrelated parts of the Data Entry form or Reports beyond the specific time formatting and calculation fixes requested."
+  ],
+  "imageRequirements": {
+    "required": [],
+    "edits": []
+  }
+}

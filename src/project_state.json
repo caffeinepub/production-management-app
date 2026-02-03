@@ -1,0 +1,262 @@
+{
+  "schemaVersion": "1.0.0",
+  "projectStateVersion": 35,
+  "summary": "Production Management App (Production Manager) is a web/PWA application backed by an Internet Computer (Motoko) canister for tracking manufacturing production. It provides master-data management (products, machines, operators), a production data-entry form that computes targets and time metrics, and an admin reports interface for filtering, summarizing, exporting (CSV/HTML) and deleting production entries. The frontend uses React + TypeScript with TanStack React Query for data fetching/caching and optimistic updates, integrates Internet Identity for authentication, and is packaged as a PWA with service-worker offline caching and Android Trusted Web Activity (TWA) deployment artifacts. The backend includes basic access-control initialization/role assignment, user profile storage, production-entry computations, and a Caffeine blob-storage maintenance mixin.",
+  "existing_features": [
+    {
+      "id": "IF-1",
+      "title": "Tab-based application shell with theme toggle",
+      "synonyms": [
+        "App layout",
+        "UI shell",
+        "Dark mode/light mode"
+      ],
+      "description": "Provides the main UI structure with a header, footer, and tab navigation between Data Entry and Admin sections. Includes dark/light theme support via next-themes and a theme toggle button.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-2",
+      "title": "Internet Identity authentication provider and session identity restoration",
+      "synonyms": [
+        "II login",
+        "AuthClient",
+        "Delegation identity"
+      ],
+      "description": "Implements an InternetIdentityProvider that initializes AuthClient, restores existing sessions, supports login/logout, and exposes identity + status flags to the app.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-3",
+      "title": "Backend actor creation with identity and secure secret parameter handling",
+      "synonyms": [
+        "useActor",
+        "actor factory",
+        "admin token via hash"
+      ],
+      "description": "Creates an authenticated canister actor when an identity exists, calls backend access-control initialization with a secret from the URL hash/session, and invalidates/refetches React Query caches when the actor changes. Includes utilities to extract secrets from URL hash and clear them to reduce leakage.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-4",
+      "title": "Role-based access-control bootstrap and role management (backend)",
+      "synonyms": [
+        "AccessControl",
+        "admin bootstrap",
+        "role assignment"
+      ],
+      "description": "Backend AccessControl allows an initial admin to be assigned using an environment admin token and a user-provided secret; supports role lookup, admin check, and admin-only role assignment via MixinAuthorization.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-5",
+      "title": "User profile storage and retrieval (backend)",
+      "synonyms": [
+        "Profile management",
+        "UserProfile"
+      ],
+      "description": "Stores per-principal user profiles (name/role text). Users can save their own profile and query their own profile; admins can query other users’ profiles.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-6",
+      "title": "Products master-data management with sorting and uniqueness validation",
+      "synonyms": [
+        "Products CRUD",
+        "Product catalog"
+      ],
+      "description": "Backend supports create/update/delete/list for products with unique-name enforcement and multiple server-side sorted list endpoints. Frontend provides full CRUD UI with client-side sorting controls, duplicate name checks, optimistic updates, and fields including loadingTime, unloadingTime, piecesPerCycle, and cycleTime.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-7",
+      "title": "Machines master-data management with sorting and uniqueness validation",
+      "synonyms": [
+        "Machines CRUD"
+      ],
+      "description": "Backend supports create/update/delete/list for machines with unique-name enforcement and optional server-side sorting by name. Frontend provides CRUD UI with client-side sorting, optimistic updates, and duplicate name checks.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-8",
+      "title": "Operators master-data management with sorting and uniqueness validation",
+      "synonyms": [
+        "Operators CRUD"
+      ],
+      "description": "Backend supports create/update/delete/list for operators with unique-name enforcement and optional server-side sorting by name. Frontend provides CRUD UI with client-side sorting, optimistic updates, and duplicate name checks.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-9",
+      "title": "Production data entry form with real-time calculations",
+      "synonyms": [
+        "Data Entry",
+        "Entry form"
+      ],
+      "description": "Provides a production entry form to select machine/operator/product and input cycle time, quantity, downtime info, and punch in/out times. Calculates number of parts produced, 10-hour and 12-hour targets, duty time, total machine run time, and total operator hours in real time before submitting to the backend.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-10",
+      "title": "Production entry persistence and computed metrics (backend)",
+      "synonyms": [
+        "ProductionEntry model",
+        "Runtime/target calculations"
+      ],
+      "description": "Backend stores production entries with computed metrics including numberOfPartsProduced, tenHourTarget, twelveHourTarget, totalRunTime, dutyTime, and totalOperatorHours, derived from product times, cycle time, downtime, and punch in/out times.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-11",
+      "title": "Production entry querying and deletion",
+      "synonyms": [
+        "Entries list",
+        "Filtering API"
+      ],
+      "description": "Backend supports querying all entries and filtering by date range, operator, or product, plus deleting entries by ID. Frontend provides React Query hooks for these queries and mutations with cache invalidation and toast notifications.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-12",
+      "title": "Admin reports viewer with filters, summaries, export and delete actions",
+      "synonyms": [
+        "Reports",
+        "CSV export",
+        "HTML export",
+        "Operator/Product summary"
+      ],
+      "description": "Admin UI provides multiple report types (all/daily/monthly/date-range/machine/operator/product/operator+date-range/operator summary/product summary), computes summary statistics, displays tabular results, allows deleting entries, and exports reports as CSV or HTML (print-to-PDF workflow) with robust save/share/view handling for mobile/TWA environments.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-13",
+      "title": "Progressive Web App (PWA) support with offline caching",
+      "synonyms": [
+        "Service worker",
+        "Offline mode"
+      ],
+      "description": "Includes a PWA manifest, icons, and a service worker that precaches critical assets and provides runtime caching (network-first with cache fallback) for improved reliability/offline behavior.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-14",
+      "title": "Android Trusted Web Activity (TWA) packaging assets and documentation",
+      "synonyms": [
+        "TWA",
+        "APK packaging",
+        "Digital Asset Links"
+      ],
+      "description": "Provides assetlinks.json for Android domain verification and a setup guide (TWA_SETUP.md) to package the deployed PWA as an Android APK using Trusted Web Activity.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-15",
+      "title": "Caffeine blob-storage maintenance mixin (backend)",
+      "synonyms": [
+        "Blob GC",
+        "Storage gateway authorization",
+        "Cashier refill"
+      ],
+      "description": "Includes backend mixins for Caffeine blob storage operations: updating authorized gateway principals, checking blob liveness, listing dead blobs to delete, confirming deletions with GC trigger, creating upload certificates, and refilling a cashier canister with cycles under authorization rules.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "feature-update-the-data-entry-page-to-display-cycle-time-for-10-hour-target-and-cycle-time-for-12-hour-target-consistently-in-minutes-and-seconds-e-g-0m-45s-1m-05s-not-seconds-only-including-correct-rounding-and-minute-second-carry-e-g-59-6s-should-display-as-1m-00s",
+      "title": "Update the Data Entry page to display “Cycle Time for 10 Hour Target” and “Cycle Time for 12 Hour Target” consistently in minutes and seconds (e.g., “0m 45s”, “1m 05s”), not seconds-only, including correct rounding and minute/second carry (e.g., 59.6s should display as “1m 00s”).",
+      "reqIds": [
+        "REQ-1"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-fix-total-operator-hours-so-it-scales-with-the-entered-quantity-produced-i-e-it-must-not-behave-as-if-quantity-is-always-1-ensure-the-value-shown-on-the-data-entry-page-and-the-value-stored-in-production-entries-and-therefore-shown-in-admin-reports-use-the-same-quantity-based-calculation",
+      "title": "Fix Total Operator Hours so it scales with the entered “Quantity Produced” (i.e., it must not behave as if quantity is always 1). Ensure the value shown on the Data Entry page and the value stored in production entries (and therefore shown in Admin → Reports) use the same quantity-based calculation.",
+      "reqIds": [
+        "REQ-2"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-restore-the-ability-to-add-edit-delete-products-machines-and-operators-from-the-admin-page-for-a-signed-in-user-this-includes-ensuring-the-backend-permissions-for-create-update-delete-operations-allow-the-intended-authenticated-users-to-perform-admin-crud-without-being-blocked-by-admin-only-authorization-traps",
+      "title": "Restore the ability to add/edit/delete Products, Machines, and Operators from the Admin page for a signed-in user. This includes ensuring the backend permissions for create/update/delete operations allow the intended authenticated users to perform Admin CRUD without being blocked by admin-only authorization traps.",
+      "reqIds": [
+        "REQ-4"
+      ],
+      "version": 1
+    }
+  ],
+  "new_feature_requests": [
+    {
+      "id": "AR-1",
+      "summary": "Display cycle time for 10h/12h targets in minutes+seconds (not seconds only) across form/reports.",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-2",
+      "summary": "Fix Total Operator Hours calculation to scale with Quantity Produced (currently behaves as if quantity=1); include correct aggregation logic.",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-3",
+      "summary": "Fix Admin section master-data CRUD so user can add machines/operators/products (currently cannot add anything).",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-6",
+      "summary": "Update backend Total Operator Hours computation to align with the frontend duty-time threshold rule: when duty time < 12 hours compute using cycle time for the 10-hour target × quantity produced + downtime; when duty time ≥ 12 hours compute using cycle time for the 12-hour target × quantity produced + downtime. (Do not compute operator hours using the form-entered cycle time when target cycle times are available.)",
+      "reqIds": [
+        "REQ-3"
+      ],
+      "status": "pending"
+    }
+  ],
+  "architecturalNotes": [
+    "Frontend is React + TypeScript, component/page layout with tab-based navigation (Data Entry vs Admin Dashboard).",
+    "TanStack React Query is used as the data layer (queries/mutations, cache invalidation, optimistic updates, staleTime tuning).",
+    "Backend is a Motoko actor canister exposing query and shared update methods; data is stored in in-memory Maps keyed by Nat IDs with incrementing counters.",
+    "Authentication uses DFINITY Internet Identity on the frontend (AuthClient/DelegationIdentity), and the authenticated identity is injected into the canister actor via agentOptions.",
+    "Authorization is implemented as a reusable Motoko mixin (AccessControl state + MixinAuthorization) with a 'first admin' bootstrap using an env var token and a user-provided secret passed from the frontend.",
+    "Frontend secret handling uses URL hash extraction + sessionStorage persistence and clears sensitive hash params from the URL to reduce token leakage.",
+    "Reporting is computed client-side from fetched entries (filtering, aggregation) and exported via generated CSV/HTML blobs; includes device-specific save/share fallbacks (File System Access API → download → Web Share API).",
+    "PWA support includes manifest, icons, theme metadata, and a service worker with precache + runtime cache (network-first with cache fallback).",
+    "Android TWA distribution is supported via assetlinks.json and a packaging guide.",
+    "Backend includes a Caffeine blob-storage maintenance mixin with authorization checks for blob pruning workflows and cashier refill support.",
+    "Build template infrastructure was updated (React/Vite workspace, scripts for pruning/resizing images, and custom ESLint rules such as avoiding BigInt in React Query keys and requiring the Internet Identity provider wrapper).",
+    "UI layer now incorporates shadcn/ui component primitives (Tailwind-based) as a shared design system; many prebuilt components live under src/components/ui and are consumed by app pages/dialogs."
+  ],
+  "knownIssues": [
+    "Backend production-entry calculation for totalOperatorHours contains target-based overrides (if quantityProduced equals tenHourTarget or twelveHourTarget it forces 10h/12h), which conflicts with the frontend’s stated 'no target-based overrides' logic and can produce mismatched values between UI expectations and stored results.",
+    "Backend totalOperatorHours lunch-break logic only adds 30 minutes when dutyTime is exactly 12h 0m, while the frontend adds lunch for duty times >= 12 hours; this can cause discrepancies.",
+    "Most backend CRUD endpoints (products, machines, operators, entries) do not enforce AccessControl roles/permissions; any caller can modify data unless guarded elsewhere.",
+    "Backend uses non-stable in-memory Maps and counters (products/machines/operators/entries/userProfiles); data will not persist across canister upgrades without stable storage/migration.",
+    "Environment variable name for storage cashier principal appears misspelled as \"CAFFFEINE_STORAGE_CASHIER_PRINCIPAL\" (extra 'F'); this is likely to cause deployment/configuration errors.",
+    "Two different CSS theme files are shown (frontend/src/index.css and frontend/index.css) with conflicting variable sets; potential duplication/misconfiguration depending on build setup.",
+    "In Android APK/TWA and/or current build, Admin section cannot add master data (machines/operators/products) — add actions fail or are blocked.",
+    "Cycle time fields for 10h/12h target are displayed in seconds only; should be formatted as minutes+seconds.",
+    "Total Operator Hours appears to be calculated for a single quantity (quantity=1) instead of using Quantity Produced value."
+  ],
+  "isFixRequest": true,
+  "gameProjectType": "none",
+  "projectName": "Production Management App",
+  "clarification_mode": "instant",
+  "clarification_rounds": 0,
+  "requiresBackendChanges": true,
+  "requiresFrontendChanges": true
+}

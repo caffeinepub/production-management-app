@@ -1,0 +1,59 @@
+{
+  "name": "Production Management App",
+  "short_name": "Production Manager",
+  "description": "Track production data, manage machines, operators, and products",
+  "start_url": "/",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#8b5cf6",
+  "scope": "/",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["productivity", "business"],
+  "icons": [
+    {
+      "src": "/assets/generated/app-icon-transparent.dim_192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/generated/app-icon-transparent.dim_512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Data Entry",
+      "short_name": "Entry",
+      "description": "Quick access to production data entry",
+      "url": "/?tab=entry",
+      "icons": [
+        {
+          "src": "/assets/generated/app-icon-transparent.dim_192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Admin Dashboard",
+      "short_name": "Admin",
+      "description": "Manage master data and reports",
+      "url": "/?tab=admin",
+      "icons": [
+        {
+          "src": "/assets/generated/app-icon-transparent.dim_192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "prefer_related_applications": false
+}

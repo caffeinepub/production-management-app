@@ -1,0 +1,69 @@
+{
+  "kind": "feature_evidence_report",
+  "features": [
+    {
+      "featureId": "feature-update-the-data-entry-page-to-display-cycle-time-for-10-hour-target-and-cycle-time-for-12-hour-target-consistently-in-minutes-and-seconds-e-g-0m-45s-1m-05s-not-seconds-only-including-correct-rounding-and-minute-second-carry-e-g-59-6s-should-display-as-1m-00s",
+      "featureTitle": "Update the Data Entry page to display “Cycle Time for 10 Hour Target” and “Cycle Time for 12 Hour Target” consistently in minutes and seconds (e.g., “0m 45s”, “1m 05s”), not seconds-only, including correct rounding and minute/second carry (e.g., 59.6s should display as “1m 00s”).",
+      "files": [
+        "frontend/src/pages/DataEntryPage.tsx",
+        "frontend/src/utils/timeFormat.ts"
+      ],
+      "components": [
+        "authorization@4.0.0",
+        "core-infrastructure@1.0.2",
+        "shadcn-ui@1.0.0",
+        "build-template-react@1.0.0",
+        "initial-app@1.0.0",
+        "blob-storage@4.0.0",
+        "github-export-icp-cli@1.0.0"
+      ],
+      "testIds": [
+        "REQ-1"
+      ],
+      "confidence": "high"
+    },
+    {
+      "featureId": "feature-fix-total-operator-hours-so-it-scales-with-the-entered-quantity-produced-i-e-it-must-not-behave-as-if-quantity-is-always-1-ensure-the-value-shown-on-the-data-entry-page-and-the-value-stored-in-production-entries-and-therefore-shown-in-admin-reports-use-the-same-quantity-based-calculation",
+      "featureTitle": "Fix Total Operator Hours so it scales with the entered “Quantity Produced” (i.e., it must not behave as if quantity is always 1). Ensure the value shown on the Data Entry page and the value stored in production entries (and therefore shown in Admin → Reports) use the same quantity-based calculation.",
+      "files": [
+        "frontend/src/pages/DataEntryPage.tsx",
+        "frontend/src/utils/operatorHours.ts"
+      ],
+      "components": [
+        "authorization@4.0.0",
+        "core-infrastructure@1.0.2",
+        "shadcn-ui@1.0.0",
+        "build-template-react@1.0.0",
+        "initial-app@1.0.0",
+        "blob-storage@4.0.0",
+        "github-export-icp-cli@1.0.0"
+      ],
+      "testIds": [
+        "REQ-2"
+      ],
+      "confidence": "high"
+    },
+    {
+      "featureId": "feature-restore-the-ability-to-add-edit-delete-products-machines-and-operators-from-the-admin-page-for-a-signed-in-user-this-includes-ensuring-the-backend-permissions-for-create-update-delete-operations-allow-the-intended-authenticated-users-to-perform-admin-crud-without-being-blocked-by-admin-only-authorization-traps",
+      "featureTitle": "Restore the ability to add/edit/delete Products, Machines, and Operators from the Admin page for a signed-in user. This includes ensuring the backend permissions for create/update/delete operations allow the intended authenticated users to perform Admin CRUD without being blocked by admin-only authorization traps.",
+      "files": [
+        "frontend/src/components/Header.tsx",
+        "frontend/src/components/LoginButton.tsx",
+        "frontend/src/utils/backendError.ts"
+      ],
+      "components": [
+        "authorization@4.0.0",
+        "core-infrastructure@1.0.2",
+        "shadcn-ui@1.0.0",
+        "build-template-react@1.0.0",
+        "initial-app@1.0.0",
+        "blob-storage@4.0.0",
+        "github-export-icp-cli@1.0.0"
+      ],
+      "testIds": [
+        "REQ-4"
+      ],
+      "confidence": "high"
+    }
+  ]
+}
