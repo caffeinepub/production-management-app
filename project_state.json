@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "1.0.0",
+  "projectStateVersion": 3,
+  "summary": "App with entry submission, report generation, report deletion (by anyone, on list and detail views), and no login requirement.",
+  "architectural_notes": [],
+  "known_issues": [],
+  "isFixRequest": false,
+  "existing_features": [
+    {
+      "id": "feature-add-a-usedeleteproductionentry-react-query-mutation-hook-in-frontend-src-hooks-usequeries-ts-that-calls-the-backend-deleteproductionentry-function-and-invalidates-the-production-entries-query-on-success",
+      "title": "Add a useDeleteProductionEntry React Query mutation hook in frontend/src/hooks/useQueries.ts that calls the backend deleteProductionEntry function and invalidates the production entries query on success.",
+      "reqIds": [
+        "REQ-2"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-add-a-delete-button-for-each-report-row-in-the-reportsviewer-component-frontend-src-components-admin-reportsviewer-tsx-clicking-it-should-call-the-delete-mutation-with-a-confirmation-prompt-before-deletion",
+      "title": "Add a Delete button for each report row in the ReportsViewer component (frontend/src/components/admin/ReportsViewer.tsx). Clicking it should call the delete mutation with a confirmation prompt before deletion.",
+      "reqIds": [
+        "REQ-3"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-add-a-delete-button-on-the-individual-report-detail-view-if-one-exists-or-inside-the-report-s-expanded-modal-view-in-reportsviewer-clicking-it-should-call-the-delete-mutation-with-a-confirmation-prompt-and-navigate-back-to-the-reports-list-after-deletion",
+      "title": "Add a Delete button on the individual report detail view (if one exists, or inside the report's expanded/modal view in ReportsViewer). Clicking it should call the delete mutation with a confirmation prompt and navigate back to the reports list after deletion.",
+      "reqIds": [
+        "REQ-4"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-remove-the-login-requirement-from-the-app-the-app-should-be-directly-accessible-without-authentication-remove-the-login-button-from-the-header-component-remove-authentication-guards-in-app-tsx-and-make-all-pages-dataentrypage-and-admindashboard-accessible-without-being-logged-in",
+      "title": "Remove the login requirement from the app. The app should be directly accessible without authentication. Remove the login button from the Header component, remove authentication guards in App.tsx, and make all pages (DataEntryPage and AdminDashboard) accessible without being logged in.",
+      "reqIds": [
+        "REQ-5"
+      ],
+      "version": 1
+    }
+  ],
+  "new_feature_requests": [
+    {
+      "id": "AR-1",
+      "summary": "Delete reports generated after submitting an entry — anyone can delete, delete button on both reports list page and individual report detail view",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-2",
+      "summary": "Remove login option — app should be directly accessible without login",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-3",
+      "summary": "Add a deleteProductionEntry backend function that allows any caller (no authorization check) to delete a production entry by its ID.",
+      "reqIds": [
+        "REQ-1"
+      ],
+      "status": "pending"
+    }
+  ],
+  "gameProjectType": "none",
+  "projectName": "ProdManager",
+  "clarification_mode": "instant",
+  "clarification_rounds": 0
+}

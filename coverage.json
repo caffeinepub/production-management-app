@@ -1,0 +1,89 @@
+{
+  "kind": "coverage_report",
+  "version": "1.0",
+  "generatedAt": "2026-02-27T12:02:03.031Z",
+  "sources": {
+    "buildRequest": true,
+    "implementationPlan": true
+  },
+  "requirements": {
+    "total": 5,
+    "implemented": 4,
+    "items": [
+      {
+        "id": "REQ-1",
+        "summary": "Add a deleteProductionEntry backend function that allows any caller (no authorization check) to delete a production entry by its ID.",
+        "status": "unknown",
+        "plannedFiles": [],
+        "matchedFiles": []
+      },
+      {
+        "id": "REQ-2",
+        "summary": "Add a useDeleteProductionEntry React Query mutation hook in frontend/src/hooks/useQueries.ts that calls the backend deleteProductionEntry function and invalidates the production entries query on success.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/hooks/useQueries.ts"
+        ],
+        "matchedFiles": [
+          "frontend/src/hooks/useQueries.ts"
+        ]
+      },
+      {
+        "id": "REQ-3",
+        "summary": "Add a Delete button for each report row in the ReportsViewer component (frontend/src/components/admin/ReportsViewer.tsx). Clicking it should call the delete mutation with a confirmation prompt before deletion.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/components/admin/ReportsViewer.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/components/admin/ReportsViewer.tsx"
+        ]
+      },
+      {
+        "id": "REQ-4",
+        "summary": "Add a Delete button on the individual report detail view (if one exists, or inside the report's expanded/modal view in ReportsViewer). Clicking it should call the delete mutation with a confirmation prompt and navigate back to the reports list after deletion.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/components/admin/ReportsViewer.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/components/admin/ReportsViewer.tsx"
+        ]
+      },
+      {
+        "id": "REQ-5",
+        "summary": "Remove the login requirement from the app. The app should be directly accessible without authentication. Remove the login button from the Header component, remove authentication guards in App.tsx, and make all pages (DataEntryPage and AdminDashboard) accessible without being logged in.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/components/Header.tsx",
+          "frontend/src/App.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/components/Header.tsx",
+          "frontend/src/App.tsx"
+        ]
+      }
+    ]
+  },
+  "changedFiles": [
+    "backend/main.mo",
+    "build-request.json",
+    "build-template/README.md",
+    "caffeine.lock.json",
+    "feature_evidence.json",
+    "frontend-file-summaries.txt",
+    "frontend-implementation-plan.json",
+    "frontend/src/App.tsx",
+    "frontend/src/backend.d.ts",
+    "frontend/src/backend.ts",
+    "frontend/src/components/Header.tsx",
+    "frontend/src/components/admin/ReportsViewer.tsx",
+    "frontend/src/declarations/backend.did.d.ts",
+    "frontend/src/declarations/backend.did.js",
+    "frontend/src/hooks/useQueries.ts",
+    "project_state.json",
+    "scratch/component-selection.json",
+    "spec.md",
+    "spec_vs_diff_report.json"
+  ]
+}

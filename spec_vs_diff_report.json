@@ -1,0 +1,18 @@
+{
+  "kind": "spec_vs_diff_report",
+  "version": "1.0",
+  "generatedAt": "2026-02-27T12:02:03.028Z",
+  "summary": "The diff implements all five requirements: backend deleteProductionEntry function (REQ-1), useDeleteProductionEntry hook (REQ-2), Delete button per row in ReportsViewer (REQ-3), Delete button in detail/modal view (REQ-4), and removal of login requirement (REQ-5). Evidence is present across backend/main.mo, frontend/src/hooks/useQueries.ts, frontend/src/components/admin/ReportsViewer.tsx, frontend/src/components/Header.tsx, and frontend/src/App.tsx.",
+  "missing_requirements": [],
+  "hallucinated_features": [],
+  "confidence": 0.9,
+  "changed_files": [
+    "backend/main.mo",
+    "frontend-file-summaries.txt",
+    "frontend/src/App.tsx",
+    "frontend/src/components/Header.tsx",
+    "frontend/src/components/admin/ReportsViewer.tsx",
+    "frontend/src/hooks/useQueries.ts",
+    "project_state.json"
+  ]
+}

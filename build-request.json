@@ -1,0 +1,126 @@
+{
+  "kind": "build_request",
+  "title": "Add report deletion and remove login requirement",
+  "projectName": "ProdManager",
+  "priority": "normal",
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "Add a deleteProductionEntry backend function that allows any caller (no authorization check) to delete a production entry by its ID.",
+      "target": "backend",
+      "source": {
+        "messageIds": [
+          "msg-10",
+          "msg-12"
+        ],
+        "quotes": [
+          "anyone can delete the report",
+          "i want to delete the reports that are generated after submitting the entry"
+        ]
+      },
+      "acceptanceCriteria": [
+        "A deleteProductionEntry(id) function exists in the backend actor",
+        "The function removes the entry with the given ID from stable storage",
+        "No authentication or ownership check is performed — any caller can delete any entry",
+        "The function returns an ok/error variant indicating success or failure"
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "text": "Add a useDeleteProductionEntry React Query mutation hook in frontend/src/hooks/useQueries.ts that calls the backend deleteProductionEntry function and invalidates the production entries query on success.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-10",
+          "msg-12"
+        ],
+        "quotes": [
+          "anyone can delete the report"
+        ]
+      },
+      "acceptanceCriteria": [
+        "useDeleteProductionEntry mutation hook is exported from useQueries.ts",
+        "On success, the production entries query cache is invalidated",
+        "A success toast is shown on deletion",
+        "An error toast is shown if deletion fails"
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "text": "Add a Delete button for each report row in the ReportsViewer component (frontend/src/components/admin/ReportsViewer.tsx). Clicking it should call the delete mutation with a confirmation prompt before deletion.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-10",
+          "msg-12"
+        ],
+        "quotes": [
+          "Delete button reports list page",
+          "it should appear on both"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Each row in the reports list has a visible Delete button",
+        "Clicking Delete shows a confirmation dialog or prompt before proceeding",
+        "Confirming deletion calls useDeleteProductionEntry with the entry ID",
+        "The deleted report is removed from the list after successful deletion"
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "text": "Add a Delete button on the individual report detail view (if one exists, or inside the report's expanded/modal view in ReportsViewer). Clicking it should call the delete mutation with a confirmation prompt and navigate back to the reports list after deletion.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-10",
+          "msg-12"
+        ],
+        "quotes": [
+          "individual report detail view",
+          "it should appear on both"
+        ]
+      },
+      "acceptanceCriteria": [
+        "A Delete button is visible in the individual report detail view or expanded row",
+        "Clicking Delete shows a confirmation dialog before proceeding",
+        "After successful deletion, the user is returned to or the detail view is closed"
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "text": "Remove the login requirement from the app. The app should be directly accessible without authentication. Remove the login button from the Header component, remove authentication guards in App.tsx, and make all pages (DataEntryPage and AdminDashboard) accessible without being logged in.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-10",
+          "msg-12"
+        ],
+        "quotes": [
+          "i dont want login option",
+          "app directly accessible होगा"
+        ]
+      },
+      "acceptanceCriteria": [
+        "No login button is displayed in the Header",
+        "No authentication guard redirects or blocks access to DataEntryPage or AdminDashboard",
+        "Both tabs are visible and accessible without any login",
+        "ProfileSetupDialog is not shown on app load",
+        "The app loads directly to the main interface without any login prompt"
+      ]
+    }
+  ],
+  "constraints": [
+    "Do not require authentication for delete operations — any user can delete any report",
+    "Do not modify files under frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useActor.ts, frontend/src/main.tsx, or frontend/src/components/ui"
+  ],
+  "nonGoals": [
+    "Role-based access control or admin-only deletion",
+    "Soft delete / archive functionality",
+    "Undo/restore deleted reports",
+    "Any new login or authentication mechanism"
+  ],
+  "imageRequirements": {
+    "required": [],
+    "edits": []
+  }
+}

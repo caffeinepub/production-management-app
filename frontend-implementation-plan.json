@@ -1,0 +1,80 @@
+{
+  "kind": "implementation_plan",
+  "version": "1.0",
+  "title": "Add report deletion and remove login requirement",
+  "requirements": [
+    {
+      "id": "REQ-2",
+      "summary": "Add a useDeleteProductionEntry React Query mutation hook that calls the backend deleteProductionEntry function and invalidates the production entries query on success",
+      "acceptanceCriteria": [
+        "useDeleteProductionEntry mutation hook is exported from useQueries.ts",
+        "On success, the production entries query cache is invalidated",
+        "A success toast is shown on deletion",
+        "An error toast is shown if deletion fails"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/hooks/useQueries.ts",
+          "operation": "modify",
+          "description": "Add a useDeleteProductionEntry mutation hook that calls actor.deleteProductionEntry with the entry ID. On success, invalidate the 'productionEntries' query key and show a success toast. On error, show an error toast with the normalized error message from backendError utility."
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "summary": "Add a Delete button for each report row in the ReportsViewer component with a confirmation prompt before deletion",
+      "acceptanceCriteria": [
+        "Each row in the reports list has a visible Delete button",
+        "Clicking Delete shows a confirmation dialog or prompt before proceeding",
+        "Confirming deletion calls useDeleteProductionEntry with the entry ID",
+        "The deleted report is removed from the list after successful deletion"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/admin/ReportsViewer.tsx",
+          "operation": "modify",
+          "description": "Import useDeleteProductionEntry from hooks/useQueries. Add a Delete button (with trash icon) to each row in the reports table. On click, show a confirmation dialog (using window.confirm or a shadcn Alert Dialog) asking 'Are you sure you want to delete this report?'. If confirmed, call the deleteProductionEntry mutation with the entry ID. The report will automatically disappear from the list after successful deletion due to query invalidation."
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "summary": "Add a Delete button in the individual report detail view or expanded row with confirmation and navigation back after deletion",
+      "acceptanceCriteria": [
+        "A Delete button is visible in the individual report detail view or expanded row",
+        "Clicking Delete shows a confirmation dialog before proceeding",
+        "After successful deletion, the user is returned to or the detail view is closed"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/admin/ReportsViewer.tsx",
+          "operation": "modify",
+          "description": "If the ReportsViewer component has an expanded detail view or modal for individual reports, add a Delete button there as well. Use the same confirmation flow and useDeleteProductionEntry mutation. After successful deletion, close the detail view/modal if open. If no expanded view exists, this requirement is satisfied by REQ-3."
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "summary": "Remove the login requirement from the app by removing the login button from Header, removing authentication guards in App.tsx, and making all pages accessible without login",
+      "acceptanceCriteria": [
+        "No login button is displayed in the Header",
+        "No authentication guard redirects or blocks access to DataEntryPage or AdminDashboard",
+        "Both tabs are visible and accessible without any login",
+        "ProfileSetupDialog is not shown on app load",
+        "The app loads directly to the main interface without any login prompt"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/Header.tsx",
+          "operation": "modify",
+          "description": "Remove the LoginButton component import and its usage from the Header. The header should only display the logo, tab navigation (Data Entry and Admin tabs should now always be visible), and the theme toggle. Do not conditionally hide tabs based on authentication status."
+        },
+        {
+          "path": "frontend/src/App.tsx",
+          "operation": "modify",
+          "description": "Remove all authentication guards and conditional rendering based on isAuthenticated. Remove the ProfileSetupDialog component entirely from the render tree. Render the tab navigation (DataEntryPage and AdminDashboard) directly without checking authentication state. Both tabs should be immediately accessible on app load."
+        }
+      ]
+    }
+  ]
+}
