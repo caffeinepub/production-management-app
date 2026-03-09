@@ -1,16 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -18,276 +7,230 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Loader2, Cog, ArrowUpDown } from 'lucide-react';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
-  useGetAllMachines,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import type React from "react";
+import { useState } from "react";
+import type { Machine } from "../../backend";
+import {
   useAddMachine,
-  useUpdateMachine,
   useDeleteMachine,
-} from '../../hooks/useQueries';
-import { useActor } from '../../hooks/useActor';
-import type { Machine, MachineId } from '../../backend';
-import { toast } from 'sonner';
-import MasterDataLoadError from '../MasterDataLoadError';
-import { normalizeBackendError } from '../../utils/backendError';
-
-type SortField = 'name' | 'id';
+  useGetAllMachines,
+  useUpdateMachine,
+} from "../../hooks/useQueries";
+import LoadingPanel from "../LoadingPanel";
+import MasterDataLoadError from "../MasterDataLoadError";
 
 export default function MachinesManager() {
-  const { actor } = useActor();
-  const [sortBy, setSortBy] = useState<SortField>('name');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const { data: machines = [], isLoading, isFetched, error, refetch } = useGetAllMachines('name');
+  const {
+    data: machines = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useGetAllMachines();
   const addMachine = useAddMachine();
   const updateMachine = useUpdateMachine();
   const deleteMachine = useDeleteMachine();
 
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMachine, setEditingMachine] = useState<Machine | null>(null);
-  const [machineName, setMachineName] = useState('');
+  const [name, setName] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<Machine | null>(null);
 
-  const handleSort = (field: SortField) => {
-    if (sortBy === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(field);
-      setSortOrder('asc');
-    }
-  };
-
-  const sortedMachines = useMemo(() => {
-    let sorted = [...machines];
-    
-    sorted.sort((a, b) => {
-      let comparison = 0;
-      
-      if (sortBy === 'id') {
-        comparison = Number(a.id) - Number(b.id);
-      } else {
-        comparison = a.name.localeCompare(b.name);
-      }
-      
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
-    
-    return sorted;
-  }, [machines, sortBy, sortOrder]);
-
-  const handleOpenDialog = (machine?: Machine) => {
-    if (!actor) {
-      toast.error('Please wait for the system to initialize');
-      return;
-    }
-    
-    if (machine) {
-      setEditingMachine(machine);
-      setMachineName(machine.name);
-    } else {
-      setEditingMachine(null);
-      setMachineName('');
-    }
-    setIsDialogOpen(true);
-  };
-
-  const handleCloseDialog = () => {
-    setIsDialogOpen(false);
+  const openAdd = () => {
     setEditingMachine(null);
-    setMachineName('');
+    setName("");
+    setDialogOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!actor) {
-      toast.error('Please wait for the system to initialize');
-      return;
-    }
-
-    const trimmedName = machineName.trim();
-    if (!trimmedName) {
-      toast.error('Machine name is required');
-      return;
-    }
-
-    try {
-      if (editingMachine) {
-        await updateMachine.mutateAsync({
-          id: editingMachine.id,
-          name: trimmedName,
-        });
-      } else {
-        await addMachine.mutateAsync(trimmedName);
-      }
-      handleCloseDialog();
-    } catch (error) {
-      // Error is already handled by mutation hooks with normalized messages
-      console.error('Save error:', error);
-    }
+  const openEdit = (machine: Machine) => {
+    setEditingMachine(machine);
+    setName(machine.name);
+    setDialogOpen(true);
   };
 
-  const handleDelete = async (id: MachineId) => {
-    if (!actor) {
-      toast.error('Please wait for the system to initialize');
-      return;
-    }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
 
-    if (confirm('Are you sure you want to delete this machine?')) {
-      try {
-        await deleteMachine.mutateAsync(id);
-      } catch (error) {
-        console.error('Delete error:', error);
-      }
+    if (editingMachine) {
+      await updateMachine.mutateAsync({
+        id: editingMachine.id,
+        name: name.trim(),
+      });
+    } else {
+      await addMachine.mutateAsync({ name: name.trim() });
     }
+    setDialogOpen(false);
   };
 
-  const isSaving = addMachine.isPending || updateMachine.isPending;
-  const showInitialLoading = isLoading && !isFetched;
-  const hasError = error && isFetched;
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    await deleteMachine.mutateAsync(deleteConfirm.id);
+    setDeleteConfirm(null);
+  };
+
+  const isMutating = addMachine.isPending || updateMachine.isPending;
+
+  if (isLoading) return <LoadingPanel message="Loading machines..." />;
+  if (isError)
+    return (
+      <MasterDataLoadError
+        message="Failed to load machines."
+        onRetry={refetch}
+      />
+    );
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Machines</CardTitle>
-              <CardDescription>Manage production machines</CardDescription>
-            </div>
-            <Button onClick={() => handleOpenDialog()} className="gap-2" disabled={isSaving || !actor}>
-              <Plus className="h-4 w-4" />
-              Add Machine
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {showInitialLoading ? (
-            <div className="text-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-3" />
-              <p className="text-muted-foreground">Loading machines...</p>
-            </div>
-          ) : hasError ? (
-            <MasterDataLoadError 
-              title="Failed to load machines"
-              message={normalizeBackendError(error)}
-              onRetry={() => refetch()}
-            />
-          ) : machines.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Cog className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="font-medium">No machines yet</p>
-              <p className="text-sm">Add your first machine to get started.</p>
-            </div>
-          ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>
+    <Card className="border-border shadow-sm">
+      <CardHeader className="flex flex-row items-center justify-between bg-primary/5 rounded-t-lg border-b border-border">
+        <CardTitle className="text-primary">Machines</CardTitle>
+        <Button
+          onClick={openAdd}
+          size="sm"
+          className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
+        >
+          <Plus className="h-4 w-4" />
+          Add Machine
+        </Button>
+      </CardHeader>
+      <CardContent className="pt-4">
+        {machines.length === 0 ? (
+          <p className="text-center text-muted-foreground py-8">
+            No machines yet. Add your first machine.
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                <TableHead className="font-semibold">ID</TableHead>
+                <TableHead className="font-semibold">Name</TableHead>
+                <TableHead className="text-right font-semibold">
+                  Actions
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {machines.map((machine) => (
+                <TableRow
+                  key={String(machine.id)}
+                  className="hover:bg-accent/30"
+                >
+                  <TableCell className="text-muted-foreground">
+                    {String(machine.id)}
+                  </TableCell>
+                  <TableCell className="font-medium">{machine.name}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="-ml-3 h-8 data-[state=open]:bg-accent"
-                        onClick={() => handleSort('name')}
+                        size="icon"
+                        onClick={() => openEdit(machine)}
+                        className="hover:bg-accent hover:text-accent-foreground"
                       >
-                        Machine Name
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                        <Pencil className="h-4 w-4" />
                       </Button>
-                    </TableHead>
-                    <TableHead>
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="-ml-3 h-8 data-[state=open]:bg-accent"
-                        onClick={() => handleSort('id')}
+                        size="icon"
+                        onClick={() => setDeleteConfirm(machine)}
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
                       >
-                        ID
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
-                    </TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedMachines.map((machine) => (
-                    <TableRow key={machine.id.toString()}>
-                      <TableCell className="font-medium">{machine.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{machine.id.toString()}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleOpenDialog(machine)}
-                            disabled={deleteMachine.isPending || !actor}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(machine.id)}
-                            disabled={deleteMachine.isPending || !actor}
-                          >
-                            {deleteMachine.isPending ? (
-                              <Loader2 className="h-4 w-4 animate-spin text-destructive" />
-                            ) : (
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            )}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
 
-      <Dialog open={isDialogOpen} onOpenChange={(open) => {
-        if (!open) handleCloseDialog();
-      }}>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingMachine ? 'Edit Machine' : 'Add Machine'}</DialogTitle>
+            <DialogTitle className="text-primary">
+              {editingMachine ? "Edit Machine" : "Add Machine"}
+            </DialogTitle>
             <DialogDescription>
               {editingMachine
-                ? 'Update the machine name below.'
-                : 'Enter the machine name below.'}
+                ? "Update machine name."
+                : "Enter a name for the new machine."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="machineName">Machine Name</Label>
+              <Label>Name *</Label>
               <Input
-                id="machineName"
-                value={machineName}
-                onChange={(e) => setMachineName(e.target.value)}
-                placeholder="Enter machine name"
-                disabled={isSaving}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                autoFocus
               />
             </div>
-          </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isMutating || !name.trim()}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                {isMutating && (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                )}
+                {editingMachine ? "Update" : "Add"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!deleteConfirm}
+        onOpenChange={(open) => !open && setDeleteConfirm(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Machine</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{deleteConfirm?.name}"? This
+              action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={handleCloseDialog} disabled={isSaving}>
+            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>
               Cancel
             </Button>
             <Button
-              onClick={handleSave}
-              disabled={!machineName.trim() || isSaving}
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteMachine.isPending}
             >
-              {isSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Saving...
-                </>
-              ) : (
-                'Save'
+              {deleteMachine.isPending && (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
               )}
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </Card>
   );
 }

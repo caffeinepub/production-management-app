@@ -2,76 +2,121 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Outfit';
+  src: url('/assets/fonts/Outfit-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  src: url('/assets/fonts/BricolageGrotesque-Variable.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
     :root {
-        --radius: 0.625rem;
-        --background: 1 0 0;
-        --foreground: 0.145 0 0;
+        --radius: 0.5rem;
+
+        /* Rich indigo-blue palette for industrial production management */
+        --background: 0.97 0.008 240;
+        --foreground: 0.14 0.03 245;
+
         --card: 1 0 0;
-        --card-foreground: 0.145 0 0;
+        --card-foreground: 0.14 0.03 245;
+
         --popover: 1 0 0;
-        --popover-foreground: 0.145 0 0;
-        --primary: 0.205 0 0;
-        --primary-foreground: 0.985 0 0;
-        --secondary: 0.97 0 0;
-        --secondary-foreground: 0.205 0 0;
-        --muted: 0.97 0 0;
-        --muted-foreground: 0.556 0 0;
-        --accent: 0.97 0 0;
-        --accent-foreground: 0.205 0 0;
-        --destructive: 0.577 0.245 27.325;
-        --destructive-foreground: 0.985 0 0;
-        --border: 0.922 0 0;
-        --input: 0.922 0 0;
-        --ring: 0.708 0 0;
-        --chart-1: 0.646 0.222 41.116;
-        --chart-2: 0.6 0.118 184.704;
-        --chart-3: 0.398 0.07 227.392;
-        --chart-4: 0.828 0.189 84.429;
-        --chart-5: 0.769 0.188 70.08;
-        --sidebar: 0.985 0 0;
-        --sidebar-foreground: 0.145 0 0;
-        --sidebar-primary: 0.205 0 0;
-        --sidebar-primary-foreground: 0.985 0 0;
-        --sidebar-accent: 0.97 0 0;
-        --sidebar-accent-foreground: 0.205 0 0;
-        --sidebar-border: 0.922 0 0;
-        --sidebar-ring: 0.708 0 0;
+        --popover-foreground: 0.14 0.03 245;
+
+        /* Deep indigo primary — distinctive, not generic blue */
+        --primary: 0.46 0.22 262;
+        --primary-foreground: 0.98 0.005 265;
+
+        --secondary: 0.91 0.06 262;
+        --secondary-foreground: 0.3 0.12 262;
+
+        --muted: 0.93 0.015 240;
+        --muted-foreground: 0.52 0.04 240;
+
+        --accent: 0.87 0.1 262;
+        --accent-foreground: 0.26 0.14 262;
+
+        --destructive: 0.54 0.22 25;
+        --destructive-foreground: 0.98 0.005 25;
+
+        --border: 0.88 0.025 262;
+        --input: 0.88 0.025 262;
+        --ring: 0.46 0.22 262;
+
+        --success: 0.54 0.18 145;
+        --warning: 0.64 0.18 75;
+
+        --chart-1: 0.46 0.22 262;
+        --chart-2: 0.54 0.18 145;
+        --chart-3: 0.64 0.18 75;
+        --chart-4: 0.54 0.22 25;
+        --chart-5: 0.58 0.2 200;
+
+        --sidebar: 0.94 0.03 262;
+        --sidebar-foreground: 0.14 0.03 245;
+        --sidebar-primary: 0.46 0.22 262;
+        --sidebar-primary-foreground: 0.98 0.005 265;
+        --sidebar-accent: 0.87 0.1 262;
+        --sidebar-accent-foreground: 0.26 0.14 262;
+        --sidebar-border: 0.88 0.025 262;
+        --sidebar-ring: 0.46 0.22 262;
     }
 
     .dark {
-        --background: 0.145 0 0;
-        --foreground: 0.985 0 0;
-        --card: 0.205 0 0;
-        --card-foreground: 0.985 0 0;
-        --popover: 0.269 0 0;
-        --popover-foreground: 0.985 0 0;
-        --primary: 0.922 0 0;
-        --primary-foreground: 0.205 0 0;
-        --secondary: 0.269 0 0;
-        --secondary-foreground: 0.985 0 0;
-        --muted: 0.269 0 0;
-        --muted-foreground: 0.708 0 0;
-        --accent: 0.371 0 0;
-        --accent-foreground: 0.985 0 0;
-        --destructive: 0.704 0.191 22.216;
-        --destructive-foreground: 0.205 0 0;
-        --border: 1 0 0 / 10%;
-        --input: 1 0 0 / 15%;
-        --ring: 0.556 0 0;
-        --chart-1: 0.488 0.243 264.376;
-        --chart-2: 0.696 0.17 162.48;
-        --chart-3: 0.769 0.188 70.08;
-        --chart-4: 0.627 0.265 303.9;
-        --chart-5: 0.645 0.246 16.439;
-        --sidebar: 0.205 0 0;
-        --sidebar-foreground: 0.985 0 0;
-        --sidebar-primary: 0.488 0.243 264.376;
-        --sidebar-primary-foreground: 0.985 0 0;
-        --sidebar-accent: 0.269 0 0;
-        --sidebar-accent-foreground: 0.985 0 0;
-        --sidebar-border: 1 0 0 / 10%;
-        --sidebar-ring: 0.439 0 0;
+        --background: 0.13 0.025 262;
+        --foreground: 0.93 0.01 240;
+
+        --card: 0.18 0.028 262;
+        --card-foreground: 0.93 0.01 240;
+
+        --popover: 0.18 0.028 262;
+        --popover-foreground: 0.93 0.01 240;
+
+        --primary: 0.67 0.2 262;
+        --primary-foreground: 0.13 0.025 262;
+
+        --secondary: 0.26 0.07 262;
+        --secondary-foreground: 0.87 0.06 262;
+
+        --muted: 0.24 0.035 262;
+        --muted-foreground: 0.62 0.045 262;
+
+        --accent: 0.3 0.1 262;
+        --accent-foreground: 0.87 0.08 262;
+
+        --destructive: 0.61 0.22 25;
+        --destructive-foreground: 0.98 0.005 25;
+
+        --border: 0.28 0.055 262;
+        --input: 0.28 0.055 262;
+        --ring: 0.67 0.2 262;
+
+        --success: 0.61 0.18 145;
+        --warning: 0.69 0.18 75;
+
+        --chart-1: 0.67 0.2 262;
+        --chart-2: 0.61 0.18 145;
+        --chart-3: 0.69 0.18 75;
+        --chart-4: 0.61 0.22 25;
+        --chart-5: 0.64 0.2 200;
+
+        --sidebar: 0.18 0.028 262;
+        --sidebar-foreground: 0.93 0.01 240;
+        --sidebar-primary: 0.67 0.2 262;
+        --sidebar-primary-foreground: 0.13 0.025 262;
+        --sidebar-accent: 0.3 0.1 262;
+        --sidebar-accent-foreground: 0.87 0.08 262;
+        --sidebar-border: 0.28 0.055 262;
+        --sidebar-ring: 0.67 0.2 262;
     }
 
     * {
@@ -79,5 +124,13 @@
     }
     body {
         @apply bg-background text-foreground;
+        font-family: 'Outfit', system-ui, sans-serif;
+        font-feature-settings: "rlig" 1, "calt" 1;
     }
+}
+
+/* Scrollable select dropdown */
+[data-radix-select-viewport] {
+  max-height: 300px;
+  overflow-y: auto;
 }

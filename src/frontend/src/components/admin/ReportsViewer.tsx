@@ -1,31 +1,3 @@
-import { useState, useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,1050 +7,582 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Download, Loader2, FileText, Share2, FileSpreadsheet, CheckCircle2, Save, FolderOpen, Trash2 } from 'lucide-react';
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Download,
+  Eye,
+  Filter,
+  Loader2,
+  RefreshCw,
+  Trash2,
+  Users,
+} from "lucide-react";
+import React, { useState, useMemo } from "react";
+import type { ProductionEntry } from "../../backend";
+import {
+  useDeleteProductionEntry,
   useGetAllMachines,
   useGetAllOperators,
   useGetAllProducts,
-  useGetAllProductionEntries,
-  useGetProductionEntriesByDateRange,
-  useGetProductionEntriesByOperator,
-  useGetProductionEntriesByProduct,
-  useDeleteProductionEntry,
-} from '../../hooks/useQueries';
-import type { MachineId, OperatorId, ProductId, ProductionEntry, EntryId } from '../../backend';
-import { toast } from 'sonner';
-import { formatTimeIntervalFromBigInt, convertTimeIntervalToSeconds } from '../../utils/operatorHours';
-
-type ReportType = 'all' | 'daily' | 'monthly' | 'dateRange' | 'machine' | 'operator' | 'product' | 'operatorDateRange' | 'operatorSummary' | 'productSummary';
-
-interface DownloadConfirmation {
-  isOpen: boolean;
-  fileName: string;
-  fileBlob: Blob | null;
-  fileType: 'csv' | 'html';
-  savedPath?: string;
-  saveMethod?: 'file-system-api' | 'download' | 'share' | 'fallback';
-}
+  useGetSortedProductionEntries,
+} from "../../hooks/useQueries";
+import { getOperatorRate } from "../../utils/operatorRates";
+import { getRejection } from "../../utils/rejectionStore";
+import { formatHMS } from "../../utils/timeFormat";
+import LoadingPanel from "../LoadingPanel";
 
 export default function ReportsViewer() {
-  const [reportType, setReportType] = useState<ReportType>('all');
-  const [selectedMachine, setSelectedMachine] = useState<string>('');
-  const [selectedOperator, setSelectedOperator] = useState<string>('');
-  const [selectedProduct, setSelectedProduct] = useState<string>('');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-  const [isExporting, setIsExporting] = useState(false);
-  const [deleteEntryId, setDeleteEntryId] = useState<EntryId | null>(null);
-  const [downloadConfirmation, setDownloadConfirmation] = useState<DownloadConfirmation>({
-    isOpen: false,
-    fileName: '',
-    fileBlob: null,
-    fileType: 'csv',
-  });
+  const [filterMachine, setFilterMachine] = useState("all");
+  const [filterOperator, setFilterOperator] = useState("all");
+  const [filterProduct, setFilterProduct] = useState("all");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
 
-  const { data: machines = [] } = useGetAllMachines('id');
-  const { data: operators = [] } = useGetAllOperators('id');
-  const { data: products = [] } = useGetAllProducts('id');
-  
+  const [deleteTargetId, setDeleteTargetId] = useState<bigint | null>(null);
+  const [selectedEntry, setSelectedEntry] = useState<ProductionEntry | null>(
+    null,
+  );
+  const [deleteFromDetail, setDeleteFromDetail] = useState(false);
+
+  const {
+    data: entries = [],
+    isLoading: entriesLoading,
+    refetch,
+  } = useGetSortedProductionEntries("timestamp");
+  const { data: products = [] } = useGetAllProducts();
+  const { data: machines = [] } = useGetAllMachines();
+  const { data: operators = [] } = useGetAllOperators();
   const deleteEntry = useDeleteProductionEntry();
 
-  // Determine which query to enable based on report type
-  const startDateObj = startDate ? new Date(startDate) : null;
-  const endDateObj = endDate ? new Date(endDate + 'T23:59:59') : null;
-  
-  // Compute enablement flags for each query type
-  const enableAllEntries = reportType === 'all' || reportType === 'daily' || reportType === 'monthly' || (reportType === 'machine' && !!selectedMachine);
-  const enableDateRange = (reportType === 'dateRange' || reportType === 'operatorDateRange' || reportType === 'operatorSummary' || reportType === 'productSummary') && !!startDateObj && !!endDateObj;
-  const enableOperator = reportType === 'operator' && !!selectedOperator;
-  const enableProduct = reportType === 'product' && !!selectedProduct;
-  
-  const { data: allEntries = [], isLoading: allLoading } = useGetAllProductionEntries({ enabled: enableAllEntries });
-  const { data: dateRangeEntries = [], isLoading: dateRangeLoading } = useGetProductionEntriesByDateRange(
-    startDateObj,
-    endDateObj,
-    { enabled: enableDateRange }
+  const productMap = useMemo(
+    () => new Map(products.map((p) => [String(p.id), p.name])),
+    [products],
   );
-  const { data: operatorEntries = [], isLoading: operatorLoading } = useGetProductionEntriesByOperator(
-    selectedOperator ? (BigInt(selectedOperator) as OperatorId) : null,
-    { enabled: enableOperator }
+  const machineMap = useMemo(
+    () => new Map(machines.map((m) => [String(m.id), m.name])),
+    [machines],
   );
-  const { data: productEntries = [], isLoading: productLoading } = useGetProductionEntriesByProduct(
-    selectedProduct ? (BigInt(selectedProduct) as ProductId) : null,
-    { enabled: enableProduct }
+  const operatorMap = useMemo(
+    () => new Map(operators.map((o) => [String(o.id), o.name])),
+    [operators],
   );
 
-  const getMachineName = (id: MachineId) => {
-    return machines.find((m) => m.id.toString() === id.toString())?.name || 'Unknown';
-  };
+  const filtered = useMemo(() => {
+    return entries.filter((entry) => {
+      if (filterMachine !== "all" && String(entry.machineId) !== filterMachine)
+        return false;
+      if (
+        filterOperator !== "all" &&
+        String(entry.operatorId) !== filterOperator
+      )
+        return false;
+      if (filterProduct !== "all" && String(entry.productId) !== filterProduct)
+        return false;
+      if (filterDateFrom) {
+        const entryDate = new Date(Number(entry.timestamp) / 1_000_000);
+        if (entryDate < new Date(filterDateFrom)) return false;
+      }
+      if (filterDateTo) {
+        const entryDate = new Date(Number(entry.timestamp) / 1_000_000);
+        const toDate = new Date(filterDateTo);
+        toDate.setHours(23, 59, 59, 999);
+        if (entryDate > toDate) return false;
+      }
+      return true;
+    });
+  }, [
+    entries,
+    filterMachine,
+    filterOperator,
+    filterProduct,
+    filterDateFrom,
+    filterDateTo,
+  ]);
 
-  const getOperatorName = (id: OperatorId) => {
-    return operators.find((o) => o.id.toString() === id.toString())?.name || 'Unknown';
-  };
-
-  const getProductName = (id: bigint) => {
-    return products.find((p) => p.id.toString() === id.toString())?.name || 'Unknown';
-  };
-
-  const formatTimestamp = (timestamp: bigint) => {
-    const ms = Number(timestamp) / 1_000_000;
-    return new Date(ms).toLocaleString();
-  };
-
-  const formatTimeOnly = (timestamp: bigint) => {
-    const ms = Number(timestamp) / 1_000_000;
-    return new Date(ms).toLocaleTimeString();
-  };
-
-  // Filter and process entries based on report type
-  const filteredEntries = useMemo(() => {
-    let entries: ProductionEntry[] = [];
-
-    switch (reportType) {
-      case 'all':
-        entries = allEntries;
-        break;
-      case 'daily':
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        entries = allEntries.filter(e => {
-          const entryDate = new Date(Number(e.timestamp) / 1_000_000);
-          return entryDate >= today && entryDate < tomorrow;
-        });
-        break;
-      case 'monthly':
-        const now = new Date();
-        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-        entries = allEntries.filter(e => {
-          const entryDate = new Date(Number(e.timestamp) / 1_000_000);
-          return entryDate >= firstDay && entryDate <= lastDay;
-        });
-        break;
-      case 'dateRange':
-        entries = dateRangeEntries;
-        break;
-      case 'machine':
-        if (selectedMachine) {
-          entries = allEntries.filter(e => e.machineId.toString() === selectedMachine);
-        }
-        break;
-      case 'operator':
-        entries = operatorEntries;
-        break;
-      case 'product':
-        entries = productEntries;
-        break;
-      case 'operatorDateRange':
-        if (selectedOperator && startDateObj && endDateObj) {
-          entries = dateRangeEntries.filter(e => e.operatorId.toString() === selectedOperator);
-        }
-        break;
-      case 'operatorSummary':
-      case 'productSummary':
-        entries = dateRangeEntries;
-        break;
-    }
-
-    return entries.sort((a, b) => Number(b.timestamp - a.timestamp));
-  }, [reportType, allEntries, dateRangeEntries, operatorEntries, productEntries, selectedMachine, selectedOperator, startDateObj, endDateObj]);
-
-  // Calculate summary statistics using stored totalOperatorHours from backend
-  const summary = useMemo(() => {
-    const totalQuantity = filteredEntries.reduce((sum, e) => sum + Number(e.quantityProduced), 0);
-    const totalParts = filteredEntries.reduce((sum, e) => sum + Number(e.numberOfPartsProduced), 0);
-    const totalTenHourTarget = filteredEntries.reduce((sum, e) => sum + Number(e.tenHourTarget), 0);
-    const totalTwelveHourTarget = filteredEntries.reduce((sum, e) => sum + Number(e.twelveHourTarget), 0);
-    
-    const totalRunTimeSeconds = filteredEntries.reduce((sum, e) => {
-      return sum + convertTimeIntervalToSeconds(e.totalRunTime);
+  const totalDutySeconds = useMemo(() => {
+    return filtered.reduce((sum, e) => {
+      return (
+        sum +
+        Number(e.dutyTime.hours) * 3600 +
+        Number(e.dutyTime.minutes) * 60 +
+        Number(e.dutyTime.seconds)
+      );
     }, 0);
-    
-    // Use stored totalOperatorHours from backend (single source of truth)
-    const totalOperatorHoursSeconds = filteredEntries.reduce((sum, e) => {
-      return sum + convertTimeIntervalToSeconds(e.totalOperatorHours);
-    }, 0);
-    
-    return {
-      totalEntries: filteredEntries.length,
-      totalQuantity,
-      totalParts,
-      totalTenHourTarget,
-      totalTwelveHourTarget,
-      totalRunTimeSeconds,
-      totalOperatorHoursSeconds,
-    };
-  }, [filteredEntries]);
+  }, [filtered]);
 
-  // Operator summary using stored totalOperatorHours
+  const totalOperatorSeconds = useMemo(() => {
+    return filtered.reduce((sum, e) => {
+      return (
+        sum +
+        Number(e.totalOperatorHours.hours) * 3600 +
+        Number(e.totalOperatorHours.minutes) * 60 +
+        Number(e.totalOperatorHours.seconds)
+      );
+    }, 0);
+  }, [filtered]);
+
+  const totalParts = useMemo(() => {
+    return filtered.reduce(
+      (sum, e) => sum + Number(e.numberOfPartsProduced),
+      0,
+    );
+  }, [filtered]);
+
+  const totalRejections = useMemo(() => {
+    return filtered.reduce(
+      (sum, e) => sum + getRejection(String(e.timestamp)),
+      0,
+    );
+  }, [filtered]);
+
+  // Operator-wise summary
   const operatorSummary = useMemo(() => {
-    if (reportType !== 'operatorSummary') return [];
-    
-    const summaryMap = new Map<string, { 
-      operatorId: OperatorId; 
-      operatorName: string; 
-      totalOperatorHours: number; 
-      totalDutyTime: number;
-      entries: number;
-    }>();
-    
-    filteredEntries.forEach(entry => {
-      const opId = entry.operatorId.toString();
-      const existing = summaryMap.get(opId);
-      
-      // Use stored totalOperatorHours from backend
-      const operatorHoursSeconds = convertTimeIntervalToSeconds(entry.totalOperatorHours);
-      const dutyTimeSeconds = convertTimeIntervalToSeconds(entry.dutyTime);
-      
-      if (existing) {
-        existing.totalOperatorHours += operatorHoursSeconds;
-        existing.totalDutyTime += dutyTimeSeconds;
-        existing.entries += 1;
-      } else {
-        summaryMap.set(opId, {
-          operatorId: entry.operatorId,
-          operatorName: getOperatorName(entry.operatorId),
-          totalOperatorHours: operatorHoursSeconds,
-          totalDutyTime: dutyTimeSeconds,
-          entries: 1,
-        });
-      }
+    const map = new Map<
+      string,
+      { dutySeconds: number; operatorSeconds: number }
+    >();
+    for (const e of filtered) {
+      const opId = String(e.operatorId);
+      const existing = map.get(opId) ?? { dutySeconds: 0, operatorSeconds: 0 };
+      existing.dutySeconds +=
+        Number(e.dutyTime.hours) * 3600 +
+        Number(e.dutyTime.minutes) * 60 +
+        Number(e.dutyTime.seconds);
+      existing.operatorSeconds +=
+        Number(e.totalOperatorHours.hours) * 3600 +
+        Number(e.totalOperatorHours.minutes) * 60 +
+        Number(e.totalOperatorHours.seconds);
+      map.set(opId, existing);
+    }
+    return Array.from(map.entries()).map(([opId, data]) => {
+      const rate = getOperatorRate(opId);
+      const operatorHoursDecimal = data.operatorSeconds / 3600;
+      const salary = operatorHoursDecimal * rate;
+      return {
+        opId,
+        name: operatorMap.get(opId) || opId,
+        dutySeconds: data.dutySeconds,
+        operatorSeconds: data.operatorSeconds,
+        rate,
+        salary,
+      };
     });
-    
-    return Array.from(summaryMap.values());
-  }, [reportType, filteredEntries]);
+  }, [filtered, operatorMap]);
 
-  // Product summary
-  const productSummary = useMemo(() => {
-    if (reportType !== 'productSummary') return [];
-    
-    const summaryMap = new Map<string, { 
-      productId: ProductId; 
-      productName: string; 
-      totalQuantity: number; 
-      totalParts: number;
-      entries: number;
-    }>();
-    
-    filteredEntries.forEach(entry => {
-      const prodId = entry.productId.toString();
-      const existing = summaryMap.get(prodId);
-      
-      if (existing) {
-        existing.totalQuantity += Number(entry.quantityProduced);
-        existing.totalParts += Number(entry.numberOfPartsProduced);
-        existing.entries += 1;
-      } else {
-        summaryMap.set(prodId, {
-          productId: entry.productId,
-          productName: getProductName(entry.productId),
-          totalQuantity: Number(entry.quantityProduced),
-          totalParts: Number(entry.numberOfPartsProduced),
-          entries: 1,
-        });
-      }
+  const exportCSV = () => {
+    const headers = [
+      "Date",
+      "Machine",
+      "Operator",
+      "Product",
+      "Cycle Time",
+      "Qty",
+      "Parts",
+      "Rejection",
+      "Downtime",
+      "Downtime Reason",
+      "Punch In",
+      "Punch Out",
+      "Duty Time",
+      "10h Target",
+      "12h Target",
+      "Total Operator Hours",
+    ];
+
+    const rows = filtered.map((e) => {
+      const date = new Date(Number(e.timestamp) / 1_000_000).toLocaleString();
+      const punchIn = new Date(Number(e.punchIn) / 1_000_000).toLocaleString();
+      const punchOut = new Date(
+        Number(e.punchOut) / 1_000_000,
+      ).toLocaleString();
+      const rejection = getRejection(String(e.timestamp));
+      return [
+        date,
+        machineMap.get(String(e.machineId)) || String(e.machineId),
+        operatorMap.get(String(e.operatorId)) || String(e.operatorId),
+        productMap.get(String(e.productId)) || String(e.productId),
+        `${e.cycleTime.minutes}m ${e.cycleTime.seconds}s`,
+        String(e.quantityProduced),
+        String(e.numberOfPartsProduced),
+        String(rejection),
+        `${e.downtimeTime.minutes}m ${e.downtimeTime.seconds}s`,
+        e.downtimeReason,
+        punchIn,
+        punchOut,
+        formatHMS(
+          Number(e.dutyTime.hours),
+          Number(e.dutyTime.minutes),
+          Number(e.dutyTime.seconds),
+        ),
+        String(e.tenHourTarget),
+        String(e.twelveHourTarget),
+        formatHMS(
+          Number(e.totalOperatorHours.hours),
+          Number(e.totalOperatorHours.minutes),
+          Number(e.totalOperatorHours.seconds),
+        ),
+      ];
     });
-    
-    return Array.from(summaryMap.values());
-  }, [reportType, filteredEntries]);
 
-  const formatSecondsToTime = (totalSeconds: number) => {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    
-    const parts: string[] = [];
-    if (hours > 0) parts.push(`${hours}h`);
-    if (minutes > 0) parts.push(`${minutes}m`);
-    if (seconds > 0) parts.push(`${seconds}s`);
-    return parts.length > 0 ? parts.join(' ') : '0s';
+    const csv = [headers, ...rows]
+      .map((r) => r.map((c) => `"${c}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `production-report-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  const generateCSVContent = () => {
-    const csvRows: string[][] = [];
-    
-    // Header
-    csvRows.push(['Production Report']);
-    csvRows.push(['Report Type', getReportTypeLabel()]);
-    csvRows.push(['Generated', new Date().toLocaleString()]);
-    csvRows.push([]);
-    
-    if (reportType === 'operatorSummary') {
-      csvRows.push(['Operator Summary']);
-      csvRows.push(['Operator', 'Total Operator Hours', 'Total Duty Time', 'Entries']);
-      operatorSummary.forEach(op => {
-        csvRows.push([
-          op.operatorName,
-          formatSecondsToTime(op.totalOperatorHours),
-          formatSecondsToTime(op.totalDutyTime),
-          op.entries.toString(),
-        ]);
-      });
-    } else if (reportType === 'productSummary') {
-      csvRows.push(['Product Summary']);
-      csvRows.push(['Product', 'Total Quantity', 'Total Parts', 'Entries']);
-      productSummary.forEach(prod => {
-        csvRows.push([
-          prod.productName,
-          prod.totalQuantity.toString(),
-          prod.totalParts.toString(),
-          prod.entries.toString(),
-        ]);
-      });
-    } else {
-      csvRows.push(['Date/Time', 'Machine', 'Operator', 'Product', 'Cycle Time', 'Quantity', 'Parts', '10h Target', '12h Target', 'Punch In', 'Punch Out', 'Duty Time', 'Downtime Reason', 'Downtime', 'Total Run Time', 'Total Operator Hours']);
-      
-      filteredEntries.forEach(entry => {
-        csvRows.push([
-          formatTimestamp(entry.timestamp),
-          getMachineName(entry.machineId),
-          getOperatorName(entry.operatorId),
-          getProductName(entry.productId),
-          `${entry.cycleTime.minutes}m ${entry.cycleTime.seconds}s`,
-          entry.quantityProduced.toString(),
-          entry.numberOfPartsProduced.toString(),
-          entry.tenHourTarget.toString(),
-          entry.twelveHourTarget.toString(),
-          formatTimeOnly(entry.punchIn),
-          formatTimeOnly(entry.punchOut),
-          formatTimeIntervalFromBigInt(entry.dutyTime.hours, entry.dutyTime.minutes, entry.dutyTime.seconds),
-          entry.downtimeReason || 'None',
-          `${entry.downtimeTime.minutes}m ${entry.downtimeTime.seconds}s`,
-          formatTimeIntervalFromBigInt(entry.totalRunTime.hours, entry.totalRunTime.minutes, entry.totalRunTime.seconds),
-          formatTimeIntervalFromBigInt(entry.totalOperatorHours.hours, entry.totalOperatorHours.minutes, entry.totalOperatorHours.seconds),
-        ]);
-      });
-    }
-    
-    csvRows.push([]);
-    csvRows.push(['Summary Statistics']);
-    csvRows.push(['Total Entries', summary.totalEntries.toString()]);
-    csvRows.push(['Total Quantity Produced', summary.totalQuantity.toString()]);
-    csvRows.push(['Total Parts Produced', summary.totalParts.toString()]);
-    csvRows.push(['Total 10-Hour Target', summary.totalTenHourTarget.toString()]);
-    csvRows.push(['Total 12-Hour Target', summary.totalTwelveHourTarget.toString()]);
-    csvRows.push(['Total Run Time', formatSecondsToTime(summary.totalRunTimeSeconds)]);
-    csvRows.push(['Total Operator Hours', formatSecondsToTime(summary.totalOperatorHoursSeconds)]);
-
-    return csvRows.map((row) => row.map(cell => {
-      const cellStr = String(cell);
-      if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
-        return `"${cellStr.replace(/"/g, '""')}"`;
-      }
-      return cellStr;
-    }).join(',')).join('\n');
+  const handleDeleteClick = (entryId: bigint, fromDetail = false) => {
+    setDeleteTargetId(entryId);
+    setDeleteFromDetail(fromDetail);
   };
 
-  const getReportTypeLabel = () => {
-    switch (reportType) {
-      case 'all': return 'All Entries';
-      case 'daily': return 'Daily Report';
-      case 'monthly': return 'Monthly Report';
-      case 'dateRange': return `Date Range: ${startDate} to ${endDate}`;
-      case 'machine': return `Machine: ${getMachineName(BigInt(selectedMachine) as MachineId)}`;
-      case 'operator': return `Operator: ${getOperatorName(BigInt(selectedOperator) as OperatorId)}`;
-      case 'product': return `Product: ${getProductName(BigInt(selectedProduct))}`;
-      case 'operatorDateRange': return `Operator & Date Range: ${getOperatorName(BigInt(selectedOperator) as OperatorId)} (${startDate} to ${endDate})`;
-      case 'operatorSummary': return 'Operator Summary by Date Range';
-      case 'productSummary': return 'Product Summary by Date Range';
-      default: return 'Report';
-    }
-  };
-
-  const generateHTMLReport = () => {
-    const reportInfo = getReportTypeLabel();
-
-    let tableContent = '';
-    
-    if (reportType === 'operatorSummary') {
-      tableContent = `
-        <h2>Operator Summary</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Operator</th>
-              <th>Total Operator Hours</th>
-              <th>Total Duty Time</th>
-              <th>Entries</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${operatorSummary.map(op => `
-              <tr>
-                <td>${op.operatorName}</td>
-                <td>${formatSecondsToTime(op.totalOperatorHours)}</td>
-                <td>${formatSecondsToTime(op.totalDutyTime)}</td>
-                <td>${op.entries}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
-    } else if (reportType === 'productSummary') {
-      tableContent = `
-        <h2>Product Summary</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Total Quantity</th>
-              <th>Total Parts</th>
-              <th>Entries</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${productSummary.map(prod => `
-              <tr>
-                <td>${prod.productName}</td>
-                <td>${prod.totalQuantity}</td>
-                <td>${prod.totalParts}</td>
-                <td>${prod.entries}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
-    } else {
-      tableContent = `
-        <table>
-          <thead>
-            <tr>
-              <th>Date/Time</th>
-              <th>Machine</th>
-              <th>Operator</th>
-              <th>Product</th>
-              <th>Cycle</th>
-              <th>Qty</th>
-              <th>Parts</th>
-              <th>10h Target</th>
-              <th>12h Target</th>
-              <th>Punch In</th>
-              <th>Punch Out</th>
-              <th>Duty Time</th>
-              <th>Downtime</th>
-              <th>Runtime</th>
-              <th>Operator Hrs</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${filteredEntries.length === 0 ? `
-              <tr>
-                <td colspan="15" style="text-align: center; padding: 20px;">No production entries found</td>
-              </tr>
-            ` : filteredEntries.map(entry => `
-              <tr>
-                <td>${formatTimestamp(entry.timestamp)}</td>
-                <td>${getMachineName(entry.machineId)}</td>
-                <td>${getOperatorName(entry.operatorId)}</td>
-                <td>${getProductName(entry.productId)}</td>
-                <td>${entry.cycleTime.minutes}m ${entry.cycleTime.seconds}s</td>
-                <td>${entry.quantityProduced}</td>
-                <td>${entry.numberOfPartsProduced}</td>
-                <td>${entry.tenHourTarget}</td>
-                <td>${entry.twelveHourTarget}</td>
-                <td>${formatTimeOnly(entry.punchIn)}</td>
-                <td>${formatTimeOnly(entry.punchOut)}</td>
-                <td>${formatTimeIntervalFromBigInt(entry.dutyTime.hours, entry.dutyTime.minutes, entry.dutyTime.seconds)}</td>
-                <td>${entry.downtimeReason || 'None'} (${entry.downtimeTime.minutes}m ${entry.downtimeTime.seconds}s)</td>
-                <td>${formatTimeIntervalFromBigInt(entry.totalRunTime.hours, entry.totalRunTime.minutes, entry.totalRunTime.seconds)}</td>
-                <td>${formatTimeIntervalFromBigInt(entry.totalOperatorHours.hours, entry.totalOperatorHours.minutes, entry.totalOperatorHours.seconds)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
-    }
-
-    const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Production Report</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    h1 { color: #9333ea; }
-    h2 { color: #9333ea; margin-top: 30px; }
-    .info { margin-bottom: 20px; color: #666; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 11px; }
-    th { background-color: #9333ea; color: white; }
-    tr:nth-child(even) { background-color: #f9f9f9; }
-    .summary { margin-top: 30px; }
-    .summary h2 { color: #9333ea; }
-    .summary-item { margin: 10px 0; }
-    @media print {
-      body { margin: 10px; }
-      table { font-size: 9px; }
-    }
-  </style>
-</head>
-<body>
-  <h1>Production Report</h1>
-  <div class="info">
-    <p><strong>Report Type:</strong> ${reportInfo}</p>
-    <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
-  </div>
-  
-  ${tableContent}
-  
-  <div class="summary">
-    <h2>Summary Statistics</h2>
-    <div class="summary-item"><strong>Total Entries:</strong> ${summary.totalEntries}</div>
-    <div class="summary-item"><strong>Total Quantity Produced:</strong> ${summary.totalQuantity}</div>
-    <div class="summary-item"><strong>Total Parts Produced:</strong> ${summary.totalParts}</div>
-    <div class="summary-item"><strong>Total 10-Hour Target:</strong> ${summary.totalTenHourTarget}</div>
-    <div class="summary-item"><strong>Total 12-Hour Target:</strong> ${summary.totalTwelveHourTarget}</div>
-    <div class="summary-item"><strong>Total Run Time:</strong> ${formatSecondsToTime(summary.totalRunTimeSeconds)}</div>
-    <div class="summary-item"><strong>Total Operator Hours:</strong> ${formatSecondsToTime(summary.totalOperatorHoursSeconds)}</div>
-  </div>
-</body>
-</html>
-    `;
-    return html;
-  };
-
-  const handleSaveFile = async () => {
-    if (!downloadConfirmation.fileBlob) return;
-
-    try {
-      const blob = downloadConfirmation.fileBlob;
-      const fileName = downloadConfirmation.fileName;
-      const mimeType = downloadConfirmation.fileType === 'csv' ? 'text/csv' : 'text/html';
-      let savedPath = '';
-      let saveMethod: DownloadConfirmation['saveMethod'] = 'fallback';
-
-      if ('showSaveFilePicker' in window) {
-        try {
-          const fileExtension = fileName.split('.').pop() || '';
-          
-          const handle = await (window as any).showSaveFilePicker({
-            suggestedName: fileName,
-            types: [
-              {
-                description: fileExtension === 'csv' ? 'CSV Files' : 'HTML Files',
-                accept: {
-                  [mimeType]: [`.${fileExtension}`],
-                },
-              },
-            ],
-          });
-          
-          const writable = await handle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          
-          savedPath = handle.name || fileName;
-          saveMethod = 'file-system-api';
-          
-          setDownloadConfirmation(prev => ({
-            ...prev,
-            savedPath,
-            saveMethod,
-          }));
-          
-          toast.success('File saved successfully to your chosen location!');
-          return;
-        } catch (error: any) {
-          if (error.name === 'AbortError') {
-            return;
-          }
-          console.log('File System Access API failed, trying fallback:', error);
+  const handleConfirmDelete = () => {
+    if (deleteTargetId === null) return;
+    deleteEntry.mutate(deleteTargetId, {
+      onSuccess: () => {
+        setDeleteTargetId(null);
+        if (deleteFromDetail) {
+          setSelectedEntry(null);
         }
-      }
-
-      try {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        
-        setTimeout(() => {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }, 100);
-
-        savedPath = `Downloads/${fileName}`;
-        saveMethod = 'download';
-        
-        setDownloadConfirmation(prev => ({
-          ...prev,
-          savedPath,
-          saveMethod,
-        }));
-
-        toast.success('File downloaded to your device!');
-        return;
-      } catch (error) {
-        console.error('Download method failed, trying share fallback:', error);
-      }
-
-      if (navigator.share && navigator.canShare) {
-        try {
-          const file = new File([blob], fileName, { type: mimeType });
-          const shareData = { 
-            files: [file], 
-            title: 'Production Report',
-            text: downloadConfirmation.fileType === 'csv' 
-              ? 'CSV Production Report' 
-              : 'HTML Production Report (Print to PDF)'
-          };
-          
-          if (navigator.canShare(shareData)) {
-            await navigator.share(shareData);
-            
-            savedPath = 'Shared via system';
-            saveMethod = 'share';
-            
-            setDownloadConfirmation(prev => ({
-              ...prev,
-              savedPath,
-              saveMethod,
-            }));
-            
-            toast.success('Report shared successfully!');
-            return;
-          }
-        } catch (error: any) {
-          if (error.name !== 'AbortError') {
-            console.error('Share fallback failed:', error);
-          }
-        }
-      }
-
-      toast.error('Unable to save file automatically. Please use the Share button instead.');
-      
-    } catch (error) {
-      console.error('Error saving file:', error);
-      toast.error('Failed to save file. Please try the Share button.');
-    }
-  };
-
-  const handleShareFile = async () => {
-    if (!downloadConfirmation.fileBlob) return;
-
-    try {
-      const blob = downloadConfirmation.fileBlob;
-      const fileName = downloadConfirmation.fileName;
-      const mimeType = downloadConfirmation.fileType === 'csv' ? 'text/csv' : 'text/html';
-
-      if (navigator.share && navigator.canShare) {
-        const file = new File([blob], fileName, { type: mimeType });
-        const shareData = { 
-          files: [file], 
-          title: 'Production Report',
-          text: downloadConfirmation.fileType === 'csv' 
-            ? 'CSV Production Report' 
-            : 'HTML Production Report (Print to PDF)'
-        };
-        
-        if (navigator.canShare(shareData)) {
-          await navigator.share(shareData);
-          toast.success('Report shared successfully!');
-          return;
-        }
-      }
-
-      toast.info('Share not supported on this device. Downloading file instead...');
-      await handleSaveFile();
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        return;
-      }
-      console.error('Error sharing file:', error);
-      toast.error('Failed to share file. Try saving instead.');
-    }
-  };
-
-  const handleViewFile = () => {
-    if (!downloadConfirmation.fileBlob) return;
-
-    try {
-      const blob = downloadConfirmation.fileBlob;
-      const url = URL.createObjectURL(blob);
-      
-      const newWindow = window.open(url, '_blank');
-      
-      if (newWindow) {
-        toast.success('File opened in new tab');
-        setTimeout(() => {
-          URL.revokeObjectURL(url);
-        }, 60000);
-      } else {
-        toast.error('Please allow pop-ups to view the file');
-      }
-    } catch (error) {
-      console.error('Error viewing file:', error);
-      toast.error('Failed to open file');
-    }
-  };
-
-  const handleCloseConfirmation = () => {
-    setDownloadConfirmation({
-      isOpen: false,
-      fileName: '',
-      fileBlob: null,
-      fileType: 'csv',
+      },
+      onError: () => {
+        setDeleteTargetId(null);
+      },
     });
   };
 
-  const handleExportCSV = async () => {
-    try {
-      setIsExporting(true);
-      const csvContent = generateCSVContent();
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const fileName = `production-report-${new Date().toISOString().split('T')[0]}.csv`;
-
-      setDownloadConfirmation({
-        isOpen: true,
-        fileName,
-        fileBlob: blob,
-        fileType: 'csv',
-      });
-      
-      toast.success('CSV report ready!');
-    } catch (error: any) {
-      console.error('Export error:', error);
-      toast.error('Failed to export CSV report');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const handleExportPDF = async () => {
-    try {
-      setIsExporting(true);
-      const htmlContent = generateHTMLReport();
-      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
-      const fileName = `production-report-${new Date().toISOString().split('T')[0]}.html`;
-
-      setDownloadConfirmation({
-        isOpen: true,
-        fileName,
-        fileBlob: blob,
-        fileType: 'html',
-      });
-      
-      toast.success('HTML report ready! Open it and use Print to PDF.');
-    } catch (error: any) {
-      console.error('Export error:', error);
-      toast.error('Failed to export report');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const handleDeleteEntry = async () => {
-    if (!deleteEntryId) return;
-    
-    try {
-      await deleteEntry.mutateAsync(deleteEntryId);
-      setDeleteEntryId(null);
-    } catch (error) {
-      console.error('Delete error:', error);
-    }
-  };
-
-  const isShareSupported = typeof navigator !== 'undefined' && 'share' in navigator;
-  
-  // Aggregate loading state based on which queries are enabled
-  const isLoading = (enableAllEntries && allLoading) || 
-                    (enableDateRange && dateRangeLoading) || 
-                    (enableOperator && operatorLoading) || 
-                    (enableProduct && productLoading);
+  if (entriesLoading) return <LoadingPanel message="Loading reports..." />;
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Production Reports</CardTitle>
-              <CardDescription>View and export production data</CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button 
-                onClick={handleExportCSV} 
-                disabled={isExporting || filteredEntries.length === 0} 
-                variant="outline"
-                className="gap-2"
+    <div className="space-y-4">
+      {/* Filters */}
+      <Card className="border-border shadow-sm">
+        <CardHeader className="pb-3 bg-primary/5 rounded-t-lg border-b border-border">
+          <CardTitle className="text-base text-primary flex items-center gap-2">
+            <Filter className="h-4 w-4" />
+            Filters
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-4">
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Machine</Label>
+            <Select value={filterMachine} onValueChange={setFilterMachine}>
+              <SelectTrigger
+                className="h-8 text-xs"
+                data-ocid="reports.machine.select"
               >
-                {isExporting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FileSpreadsheet className="h-4 w-4" />
-                )}
-                Export CSV
-              </Button>
-              <Button 
-                onClick={handleExportPDF} 
-                disabled={isExporting || filteredEntries.length === 0}
-                className="gap-2"
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Machines</SelectItem>
+                {machines.map((m) => (
+                  <SelectItem key={String(m.id)} value={String(m.id)}>
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Operator</Label>
+            <Select value={filterOperator} onValueChange={setFilterOperator}>
+              <SelectTrigger
+                className="h-8 text-xs"
+                data-ocid="reports.operator.select"
               >
-                {isExporting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                Export HTML
-              </Button>
-            </div>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Operators</SelectItem>
+                {operators.map((o) => (
+                  <SelectItem key={String(o.id)} value={String(o.id)}>
+                    {o.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Product</Label>
+            <Select value={filterProduct} onValueChange={setFilterProduct}>
+              <SelectTrigger
+                className="h-8 text-xs"
+                data-ocid="reports.product.select"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Products</SelectItem>
+                {products.map((p) => (
+                  <SelectItem key={String(p.id)} value={String(p.id)}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">From Date</Label>
+            <Input
+              type="date"
+              className="h-8 text-xs"
+              value={filterDateFrom}
+              onChange={(e) => setFilterDateFrom(e.target.value)}
+              data-ocid="reports.datefrom.input"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">To Date</Label>
+            <Input
+              type="date"
+              className="h-8 text-xs"
+              value={filterDateTo}
+              onChange={(e) => setFilterDateTo(e.target.value)}
+              data-ocid="reports.dateto.input"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Card className="p-3 border-border shadow-sm bg-primary/5">
+          <p className="text-xs text-muted-foreground">Total Entries</p>
+          <p className="text-2xl font-bold text-primary">{filtered.length}</p>
+        </Card>
+        <Card className="p-3 border-border shadow-sm bg-secondary/50">
+          <p className="text-xs text-muted-foreground">Total Parts</p>
+          <p className="text-2xl font-bold text-secondary-foreground">
+            {totalParts.toLocaleString()}
+          </p>
+        </Card>
+        <Card className="p-3 border-border shadow-sm">
+          <p className="text-xs text-muted-foreground">Total Duty Time</p>
+          <p className="text-lg font-bold text-foreground">
+            {formatHMS(
+              Math.floor(totalDutySeconds / 3600),
+              Math.floor((totalDutySeconds % 3600) / 60),
+              totalDutySeconds % 60,
+            )}
+          </p>
+        </Card>
+        <Card className="p-3 border-border shadow-sm bg-accent/40">
+          <p className="text-xs text-muted-foreground">Total Operator Hours</p>
+          <p className="text-lg font-bold text-primary">
+            {formatHMS(
+              Math.floor(totalOperatorSeconds / 3600),
+              Math.floor((totalOperatorSeconds % 3600) / 60),
+              totalOperatorSeconds % 60,
+            )}
+          </p>
+        </Card>
+      </div>
+
+      {/* Table */}
+      <Card className="border-border shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between bg-primary/5 rounded-t-lg border-b border-border">
+          <CardTitle className="text-base text-primary">
+            Production Entries
+            <Badge
+              variant="secondary"
+              className="ml-2 bg-secondary text-secondary-foreground"
+            >
+              {filtered.length}
+            </Badge>
+          </CardTitle>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              className="gap-1 border-border hover:bg-accent hover:text-accent-foreground"
+              data-ocid="reports.secondary_button"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Refresh
+            </Button>
+            <Button
+              size="sm"
+              onClick={exportCSV}
+              disabled={filtered.length === 0}
+              className="gap-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+              data-ocid="reports.primary_button"
+            >
+              <Download className="h-3 w-3" />
+              Export CSV
+            </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Report Type Selection */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="reportType">Report Type</Label>
-              <Select value={reportType} onValueChange={(value) => setReportType(value as ReportType)}>
-                <SelectTrigger id="reportType">
-                  <SelectValue placeholder="Select report type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Entries</SelectItem>
-                  <SelectItem value="daily">Daily Report</SelectItem>
-                  <SelectItem value="monthly">Monthly Report</SelectItem>
-                  <SelectItem value="dateRange">Report by Date Range</SelectItem>
-                  <SelectItem value="machine">Report by Machine</SelectItem>
-                  <SelectItem value="operator">Report by Operator</SelectItem>
-                  <SelectItem value="product">Report by Product</SelectItem>
-                  <SelectItem value="operatorDateRange">Report by Operator & Date Range</SelectItem>
-                  <SelectItem value="operatorSummary">Operator Summary by Date Range</SelectItem>
-                  <SelectItem value="productSummary">Product Summary by Date Range</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Conditional filters based on report type */}
-            {(reportType === 'dateRange' || reportType === 'operatorDateRange' || reportType === 'operatorSummary' || reportType === 'productSummary') && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="startDate">Start Date</Label>
-                  <Input
-                    id="startDate"
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="endDate">End Date</Label>
-                  <Input
-                    id="endDate"
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                  />
-                </div>
-              </>
-            )}
-
-            {reportType === 'machine' && (
-              <div className="space-y-2">
-                <Label htmlFor="machine">Machine</Label>
-                <Select value={selectedMachine} onValueChange={setSelectedMachine}>
-                  <SelectTrigger id="machine">
-                    <SelectValue placeholder="Select a machine" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {machines.map((machine) => (
-                      <SelectItem key={machine.id.toString()} value={machine.id.toString()}>
-                        {machine.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {(reportType === 'operator' || reportType === 'operatorDateRange') && (
-              <div className="space-y-2">
-                <Label htmlFor="operator">Operator</Label>
-                <Select value={selectedOperator} onValueChange={setSelectedOperator}>
-                  <SelectTrigger id="operator">
-                    <SelectValue placeholder="Select an operator" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {operators.map((operator) => (
-                      <SelectItem key={operator.id.toString()} value={operator.id.toString()}>
-                        {operator.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {reportType === 'product' && (
-              <div className="space-y-2">
-                <Label htmlFor="product">Product</Label>
-                <Select value={selectedProduct} onValueChange={setSelectedProduct}>
-                  <SelectTrigger id="product">
-                    <SelectValue placeholder="Select a product" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {products.map((product) => (
-                      <SelectItem key={product.id.toString()} value={product.id.toString()}>
-                        {product.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-
-          {/* Summary Statistics */}
-          {filteredEntries.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Entries</p>
-                <p className="text-2xl font-bold">{summary.totalEntries}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Quantity</p>
-                <p className="text-2xl font-bold">{summary.totalQuantity}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Parts</p>
-                <p className="text-2xl font-bold">{summary.totalParts}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Operator Hours</p>
-                <p className="text-2xl font-bold">{formatSecondsToTime(Math.floor(summary.totalOperatorHoursSeconds))}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Report Content */}
-          {isLoading ? (
-            <div className="text-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-3" />
-              <p className="text-muted-foreground">Loading report data...</p>
-            </div>
-          ) : reportType === 'operatorSummary' ? (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Operator</TableHead>
-                    <TableHead>Total Operator Hours</TableHead>
-                    <TableHead>Total Duty Time</TableHead>
-                    <TableHead>Entries</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {operatorSummary.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
-                        No data available for the selected date range
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    operatorSummary.map((op) => (
-                      <TableRow key={op.operatorId.toString()}>
-                        <TableCell className="font-medium">{op.operatorName}</TableCell>
-                        <TableCell>{formatSecondsToTime(op.totalOperatorHours)}</TableCell>
-                        <TableCell>{formatSecondsToTime(op.totalDutyTime)}</TableCell>
-                        <TableCell>{op.entries}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          ) : reportType === 'productSummary' ? (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Total Quantity</TableHead>
-                    <TableHead>Total Parts</TableHead>
-                    <TableHead>Entries</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {productSummary.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
-                        No data available for the selected date range
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    productSummary.map((prod) => (
-                      <TableRow key={prod.productId.toString()}>
-                        <TableCell className="font-medium">{prod.productName}</TableCell>
-                        <TableCell>{prod.totalQuantity}</TableCell>
-                        <TableCell>{prod.totalParts}</TableCell>
-                        <TableCell>{prod.entries}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          ) : filteredEntries.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="font-medium">No production entries found</p>
-              <p className="text-sm">
-                {reportType === 'all' 
-                  ? 'Start by adding entries in the Data Entry tab.'
-                  : 'Try adjusting your filter criteria.'}
-              </p>
-            </div>
+        <CardContent className="pt-2">
+          {filtered.length === 0 ? (
+            <p
+              className="text-center text-muted-foreground py-8"
+              data-ocid="reports.empty_state"
+            >
+              No entries found for the selected filters.
+            </p>
           ) : (
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
+            <div className="overflow-x-auto">
+              <Table data-ocid="reports.table">
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Date/Time</TableHead>
-                    <TableHead>Machine</TableHead>
-                    <TableHead>Operator</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Qty</TableHead>
-                    <TableHead>Parts</TableHead>
-                    <TableHead>10h Target</TableHead>
-                    <TableHead>12h Target</TableHead>
-                    <TableHead>Duty Time</TableHead>
-                    <TableHead>Runtime</TableHead>
-                    <TableHead>Op Hours</TableHead>
-                    <TableHead>Actions</TableHead>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="font-semibold">Date</TableHead>
+                    <TableHead className="font-semibold">Machine</TableHead>
+                    <TableHead className="font-semibold">Operator</TableHead>
+                    <TableHead className="font-semibold">Product</TableHead>
+                    <TableHead className="font-semibold">Qty</TableHead>
+                    <TableHead className="font-semibold">Parts</TableHead>
+                    <TableHead className="font-semibold text-destructive">
+                      Rejection
+                    </TableHead>
+                    <TableHead className="font-semibold">Cycle Time</TableHead>
+                    <TableHead className="font-semibold">Duty Time</TableHead>
+                    <TableHead className="font-semibold">Downtime</TableHead>
+                    <TableHead className="font-semibold">10h Target</TableHead>
+                    <TableHead className="font-semibold">12h Target</TableHead>
+                    <TableHead className="font-semibold">
+                      Operator Hours
+                    </TableHead>
+                    <TableHead className="font-semibold text-center">
+                      Actions
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredEntries.map((entry) => (
-                    <TableRow key={entry.id.toString()}>
-                      <TableCell className="whitespace-nowrap">{formatTimestamp(entry.timestamp)}</TableCell>
-                      <TableCell>{getMachineName(entry.machineId)}</TableCell>
-                      <TableCell>{getOperatorName(entry.operatorId)}</TableCell>
-                      <TableCell>{getProductName(entry.productId)}</TableCell>
-                      <TableCell>{entry.quantityProduced.toString()}</TableCell>
-                      <TableCell>{entry.numberOfPartsProduced.toString()}</TableCell>
-                      <TableCell>{entry.tenHourTarget.toString()}</TableCell>
-                      <TableCell>{entry.twelveHourTarget.toString()}</TableCell>
-                      <TableCell>{formatTimeIntervalFromBigInt(entry.dutyTime.hours, entry.dutyTime.minutes, entry.dutyTime.seconds)}</TableCell>
-                      <TableCell>{formatTimeIntervalFromBigInt(entry.totalRunTime.hours, entry.totalRunTime.minutes, entry.totalRunTime.seconds)}</TableCell>
-                      <TableCell>{formatTimeIntervalFromBigInt(entry.totalOperatorHours.hours, entry.totalOperatorHours.minutes, entry.totalOperatorHours.seconds)}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDeleteEntryId(entry.id)}
-                          disabled={deleteEntry.isPending}
+                  {[...filtered].reverse().map((entry, idx) => {
+                    const rejection = getRejection(String(entry.timestamp));
+                    return (
+                      <TableRow
+                        key={String(entry.id)}
+                        className="hover:bg-accent/20"
+                        data-ocid={`reports.item.${idx + 1}`}
+                      >
+                        <TableCell className="text-xs whitespace-nowrap">
+                          {new Date(
+                            Number(entry.timestamp) / 1_000_000,
+                          ).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          {machineMap.get(String(entry.machineId)) || "—"}
+                        </TableCell>
+                        <TableCell>
+                          {operatorMap.get(String(entry.operatorId)) || "—"}
+                        </TableCell>
+                        <TableCell>
+                          {productMap.get(String(entry.productId)) || "—"}
+                        </TableCell>
+                        <TableCell>{String(entry.quantityProduced)}</TableCell>
+                        <TableCell>
+                          {String(entry.numberOfPartsProduced)}
+                        </TableCell>
+                        <TableCell
+                          className={
+                            rejection > 0
+                              ? "font-semibold text-destructive"
+                              : "text-muted-foreground"
+                          }
                         >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                          {rejection > 0 ? rejection : "—"}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {String(entry.cycleTime.minutes)}m{" "}
+                          {String(entry.cycleTime.seconds)}s
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {formatHMS(
+                            Number(entry.dutyTime.hours),
+                            Number(entry.dutyTime.minutes),
+                            Number(entry.dutyTime.seconds),
+                          )}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {Number(entry.downtimeTime.minutes) > 0 ||
+                          Number(entry.downtimeTime.seconds) > 0
+                            ? `${entry.downtimeTime.minutes}m ${entry.downtimeTime.seconds}s`
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="font-medium text-primary">
+                          {String(entry.tenHourTarget)}
+                        </TableCell>
+                        <TableCell className="font-medium text-secondary-foreground">
+                          {String(entry.twelveHourTarget)}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap font-bold text-primary">
+                          {formatHMS(
+                            Number(entry.totalOperatorHours.hours),
+                            Number(entry.totalOperatorHours.minutes),
+                            Number(entry.totalOperatorHours.seconds),
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-primary"
+                              onClick={() => setSelectedEntry(entry)}
+                              title="View details"
+                              data-ocid={`reports.row.${idx + 1}`}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleDeleteClick(entry.id)}
+                              disabled={
+                                deleteEntry.isPending &&
+                                deleteTargetId === entry.id
+                              }
+                              title="Delete report"
+                              data-ocid={`reports.delete_button.${idx + 1}`}
+                            >
+                              {deleteEntry.isPending &&
+                              deleteTargetId === entry.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -1086,126 +590,322 @@ export default function ReportsViewer() {
         </CardContent>
       </Card>
 
+      {/* Operator-wise Summary */}
+      {operatorSummary.length > 0 && (
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-3 bg-primary/5 rounded-t-lg border-b border-border">
+            <CardTitle className="text-base text-primary flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Operator-wise Summary
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-3">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="font-semibold">Operator</TableHead>
+                    <TableHead className="font-semibold">
+                      Total Duty Time
+                    </TableHead>
+                    <TableHead className="font-semibold">
+                      Total Operator Hours
+                    </TableHead>
+                    <TableHead className="font-semibold">
+                      Rate/Hour (₹)
+                    </TableHead>
+                    <TableHead className="font-semibold text-primary">
+                      Salary (₹)
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {operatorSummary.map((row, idx) => (
+                    <TableRow
+                      key={row.opId}
+                      className="hover:bg-accent/20"
+                      data-ocid={`summary.item.${idx + 1}`}
+                    >
+                      <TableCell className="font-medium">{row.name}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {formatHMS(
+                          Math.floor(row.dutySeconds / 3600),
+                          Math.floor((row.dutySeconds % 3600) / 60),
+                          row.dutySeconds % 60,
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap font-semibold text-primary">
+                        {formatHMS(
+                          Math.floor(row.operatorSeconds / 3600),
+                          Math.floor((row.operatorSeconds % 3600) / 60),
+                          row.operatorSeconds % 60,
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {row.rate > 0
+                          ? `₹${row.rate.toLocaleString("en-IN")}`
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="font-bold text-primary">
+                        {row.salary > 0 ? (
+                          `₹${row.salary.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        ) : row.rate === 0 ? (
+                          <span className="text-muted-foreground text-xs">
+                            Set rate in Admin
+                          </span>
+                        ) : (
+                          "₹0.00"
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            {/* Totals row */}
+            <div className="mt-3 bg-primary/5 rounded-md px-4 py-3 flex flex-wrap gap-4 text-sm">
+              <span className="font-semibold text-foreground">
+                Total Duty Time:{" "}
+                <span className="text-primary">
+                  {formatHMS(
+                    Math.floor(totalDutySeconds / 3600),
+                    Math.floor((totalDutySeconds % 3600) / 60),
+                    totalDutySeconds % 60,
+                  )}
+                </span>
+              </span>
+              <span className="font-semibold text-foreground">
+                Total Operator Hours:{" "}
+                <span className="text-primary">
+                  {formatHMS(
+                    Math.floor(totalOperatorSeconds / 3600),
+                    Math.floor((totalOperatorSeconds % 3600) / 60),
+                    totalOperatorSeconds % 60,
+                  )}
+                </span>
+              </span>
+              <span className="font-semibold text-foreground">
+                Total Salary:{" "}
+                <span className="text-primary">
+                  ₹
+                  {operatorSummary
+                    .reduce((s, r) => s + r.salary, 0)
+                    .toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                </span>
+              </span>
+              {totalRejections > 0 && (
+                <span className="font-semibold text-foreground">
+                  Total Rejections:{" "}
+                  <span className="text-destructive">{totalRejections}</span>
+                </span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Detail View Dialog */}
+      <Dialog
+        open={!!selectedEntry}
+        onOpenChange={(open) => {
+          if (!open) setSelectedEntry(null);
+        }}
+      >
+        <DialogContent className="max-w-lg" data-ocid="reports.dialog">
+          <DialogHeader>
+            <DialogTitle className="text-primary">Report Details</DialogTitle>
+          </DialogHeader>
+          {selectedEntry && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-muted/40 rounded-lg p-2">
+                  <p className="text-xs text-muted-foreground">Date</p>
+                  <p className="font-medium">
+                    {new Date(
+                      Number(selectedEntry.timestamp) / 1_000_000,
+                    ).toLocaleString()}
+                  </p>
+                </div>
+                <div className="bg-muted/40 rounded-lg p-2">
+                  <p className="text-xs text-muted-foreground">Machine</p>
+                  <p className="font-medium">
+                    {machineMap.get(String(selectedEntry.machineId)) || "—"}
+                  </p>
+                </div>
+                <div className="bg-muted/40 rounded-lg p-2">
+                  <p className="text-xs text-muted-foreground">Operator</p>
+                  <p className="font-medium">
+                    {operatorMap.get(String(selectedEntry.operatorId)) || "—"}
+                  </p>
+                </div>
+                <div className="bg-muted/40 rounded-lg p-2">
+                  <p className="text-xs text-muted-foreground">Product</p>
+                  <p className="font-medium">
+                    {productMap.get(String(selectedEntry.productId)) || "—"}
+                  </p>
+                </div>
+                <div className="bg-muted/40 rounded-lg p-2">
+                  <p className="text-xs text-muted-foreground">
+                    Quantity Produced
+                  </p>
+                  <p className="font-medium">
+                    {String(selectedEntry.quantityProduced)}
+                  </p>
+                </div>
+                <div className="bg-muted/40 rounded-lg p-2">
+                  <p className="text-xs text-muted-foreground">
+                    Parts Produced
+                  </p>
+                  <p className="font-medium">
+                    {String(selectedEntry.numberOfPartsProduced)}
+                  </p>
+                </div>
+                {(() => {
+                  const rej = getRejection(String(selectedEntry.timestamp));
+                  return rej > 0 ? (
+                    <div className="bg-destructive/10 rounded-lg p-2">
+                      <p className="text-xs text-muted-foreground">
+                        Rejection Count
+                      </p>
+                      <p className="font-semibold text-destructive">{rej}</p>
+                    </div>
+                  ) : null;
+                })()}
+                <div className="bg-muted/40 rounded-lg p-2">
+                  <p className="text-xs text-muted-foreground">Cycle Time</p>
+                  <p className="font-medium">
+                    {String(selectedEntry.cycleTime.minutes)}m{" "}
+                    {String(selectedEntry.cycleTime.seconds)}s
+                  </p>
+                </div>
+                <div className="bg-muted/40 rounded-lg p-2">
+                  <p className="text-xs text-muted-foreground">Duty Time</p>
+                  <p className="font-medium">
+                    {formatHMS(
+                      Number(selectedEntry.dutyTime.hours),
+                      Number(selectedEntry.dutyTime.minutes),
+                      Number(selectedEntry.dutyTime.seconds),
+                    )}
+                  </p>
+                </div>
+                <div className="bg-muted/40 rounded-lg p-2">
+                  <p className="text-xs text-muted-foreground">Downtime</p>
+                  <p className="font-medium">
+                    {Number(selectedEntry.downtimeTime.minutes) > 0 ||
+                    Number(selectedEntry.downtimeTime.seconds) > 0
+                      ? `${selectedEntry.downtimeTime.minutes}m ${selectedEntry.downtimeTime.seconds}s`
+                      : "—"}
+                  </p>
+                </div>
+                <div className="bg-muted/40 rounded-lg p-2">
+                  <p className="text-xs text-muted-foreground">
+                    Downtime Reason
+                  </p>
+                  <p className="font-medium">
+                    {selectedEntry.downtimeReason || "—"}
+                  </p>
+                </div>
+                <div className="bg-primary/10 rounded-lg p-2">
+                  <p className="text-xs text-muted-foreground">10h Target</p>
+                  <p className="font-bold text-primary">
+                    {String(selectedEntry.tenHourTarget)}
+                  </p>
+                </div>
+                <div className="bg-primary/10 rounded-lg p-2">
+                  <p className="text-xs text-muted-foreground">12h Target</p>
+                  <p className="font-bold text-primary">
+                    {String(selectedEntry.twelveHourTarget)}
+                  </p>
+                </div>
+              </div>
+              <div className="bg-primary/10 rounded-lg p-3">
+                <p className="text-xs text-muted-foreground">
+                  Total Operator Hours
+                </p>
+                <p className="text-xl font-bold text-primary">
+                  {formatHMS(
+                    Number(selectedEntry.totalOperatorHours.hours),
+                    Number(selectedEntry.totalOperatorHours.minutes),
+                    Number(selectedEntry.totalOperatorHours.seconds),
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="flex gap-2 sm:justify-between">
+            <Button
+              variant="destructive"
+              size="sm"
+              className="gap-1"
+              onClick={() =>
+                selectedEntry && handleDeleteClick(selectedEntry.id, true)
+              }
+              disabled={deleteEntry.isPending}
+              data-ocid="reports.delete_button"
+            >
+              {deleteEntry.isPending && deleteFromDetail ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Delete Report
+            </Button>
+            <DialogClose asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                data-ocid="reports.close_button"
+              >
+                Close
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deleteEntryId} onOpenChange={(open) => !open && setDeleteEntryId(null)}>
-        <AlertDialogContent>
+      <AlertDialog
+        open={deleteTargetId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTargetId(null);
+        }}
+      >
+        <AlertDialogContent data-ocid="reports.dialog">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Production Entry</AlertDialogTitle>
+            <AlertDialogTitle>Delete Report</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this production entry? This action cannot be undone.
+              Are you sure you want to delete this report? This action cannot be
+              undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteEntry.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel
+              disabled={deleteEntry.isPending}
+              data-ocid="reports.cancel_button"
+            >
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteEntry}
+              onClick={handleConfirmDelete}
               disabled={deleteEntry.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-ocid="reports.confirm_button"
             >
               {deleteEntry.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <span className="flex items-center gap-1">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Deleting...
-                </>
+                </span>
               ) : (
-                'Delete'
+                "Delete"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Download Confirmation Dialog */}
-      <Dialog open={downloadConfirmation.isOpen} onOpenChange={(open) => {
-        if (!open) handleCloseConfirmation();
-      }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
-              </div>
-              <div>
-                <DialogTitle>Report ready</DialogTitle>
-                <DialogDescription className="mt-1">
-                  Choose to save, share, or view your production report
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div className="rounded-lg bg-muted p-4">
-              <div className="flex items-start gap-3">
-                {downloadConfirmation.fileType === 'csv' ? (
-                  <FileSpreadsheet className="h-5 w-5 text-muted-foreground mt-0.5" />
-                ) : (
-                  <FileText className="h-5 w-5 text-muted-foreground mt-0.5" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium break-all">
-                    {downloadConfirmation.fileName}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {downloadConfirmation.fileType === 'csv' ? 'CSV Report' : 'HTML Report (Print to PDF)'}
-                  </p>
-                  {downloadConfirmation.savedPath && (
-                    <p className="text-xs text-green-600 dark:text-green-400 mt-2 font-medium">
-                      ✓ Saved to: {downloadConfirmation.savedPath}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg space-y-1">
-              <p>💾 <strong>Save:</strong> Download the file to your device storage (Downloads folder)</p>
-              {isShareSupported && (
-                <p>📤 <strong>Share:</strong> Send via WhatsApp, Gmail, Drive, or other apps</p>
-              )}
-              <p>👁️ <strong>View File:</strong> Open the report in a new tab to preview or print</p>
-              {downloadConfirmation.fileType === 'html' && (
-                <p>🖨️ <strong>Tip:</strong> Use your browser's Print to PDF feature to create a PDF</p>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              onClick={handleCloseConfirmation}
-              className="w-full sm:w-auto"
-            >
-              Close
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleViewFile}
-              className="w-full sm:w-auto gap-2"
-            >
-              <FolderOpen className="h-4 w-4" />
-              View File
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleSaveFile}
-              className="w-full sm:w-auto gap-2"
-            >
-              <Save className="h-4 w-4" />
-              Save
-            </Button>
-            {isShareSupported && (
-              <Button
-                onClick={handleShareFile}
-                className="w-full sm:w-auto gap-2"
-              >
-                <Share2 className="h-4 w-4" />
-                Share
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+    </div>
   );
 }

@@ -28,9 +28,9 @@ export const NewProductFields = IDL.Record({
   'unloadingTime' : IDL.Nat,
   'piecesPerCycle' : IDL.Nat,
 });
+export const ProductId = IDL.Nat;
 export const MachineId = IDL.Nat;
 export const OperatorId = IDL.Nat;
-export const ProductId = IDL.Nat;
 export const UserRole = IDL.Variant({
   'admin' : IDL.Null,
   'user' : IDL.Null,
@@ -39,35 +39,6 @@ export const UserRole = IDL.Variant({
 export const EntryId = IDL.Nat;
 export const Machine = IDL.Record({ 'id' : MachineId, 'name' : IDL.Text });
 export const Operator = IDL.Record({ 'id' : OperatorId, 'name' : IDL.Text });
-export const RuntimeType = IDL.Record({
-  'hours' : IDL.Nat,
-  'minutes' : IDL.Nat,
-  'seconds' : IDL.Nat,
-});
-export const TimeInterval = IDL.Record({
-  'hours' : IDL.Nat,
-  'minutes' : IDL.Nat,
-  'seconds' : IDL.Nat,
-});
-export const ProductionEntry = IDL.Record({
-  'id' : EntryId,
-  'cycleTime' : IDL.Record({ 'minutes' : IDL.Nat, 'seconds' : IDL.Nat }),
-  'punchOut' : IDL.Int,
-  'productId' : ProductId,
-  'downtimeTime' : IDL.Record({ 'minutes' : IDL.Nat, 'seconds' : IDL.Nat }),
-  'totalRunTime' : RuntimeType,
-  'punchIn' : IDL.Int,
-  'operatorId' : OperatorId,
-  'dutyTime' : TimeInterval,
-  'timestamp' : IDL.Int,
-  'twelveHourTarget' : IDL.Nat,
-  'downtimeReason' : IDL.Text,
-  'tenHourTarget' : IDL.Nat,
-  'numberOfPartsProduced' : IDL.Nat,
-  'quantityProduced' : IDL.Nat,
-  'machineId' : MachineId,
-  'totalOperatorHours' : TimeInterval,
-});
 export const Product = IDL.Record({
   'id' : ProductId,
   'cycleTime' : IDL.Nat,
@@ -77,6 +48,37 @@ export const Product = IDL.Record({
   'piecesPerCycle' : IDL.Nat,
 });
 export const UserProfile = IDL.Record({ 'name' : IDL.Text, 'role' : IDL.Text });
+export const ProductionEntry = IDL.Record({
+  'id' : EntryId,
+  'cycleTime' : IDL.Record({ 'minutes' : IDL.Nat, 'seconds' : IDL.Nat }),
+  'punchOut' : IDL.Int,
+  'productId' : ProductId,
+  'downtimeTime' : IDL.Record({ 'minutes' : IDL.Nat, 'seconds' : IDL.Nat }),
+  'totalRunTime' : IDL.Record({
+    'hours' : IDL.Nat,
+    'minutes' : IDL.Nat,
+    'seconds' : IDL.Nat,
+  }),
+  'punchIn' : IDL.Int,
+  'operatorId' : OperatorId,
+  'dutyTime' : IDL.Record({
+    'hours' : IDL.Nat,
+    'minutes' : IDL.Nat,
+    'seconds' : IDL.Nat,
+  }),
+  'timestamp' : IDL.Int,
+  'twelveHourTarget' : IDL.Nat,
+  'downtimeReason' : IDL.Text,
+  'tenHourTarget' : IDL.Nat,
+  'numberOfPartsProduced' : IDL.Nat,
+  'quantityProduced' : IDL.Nat,
+  'machineId' : MachineId,
+  'totalOperatorHours' : IDL.Record({
+    'hours' : IDL.Nat,
+    'minutes' : IDL.Nat,
+    'seconds' : IDL.Nat,
+  }),
+});
 
 export const idlService = IDL.Service({
   '_caffeineStorageBlobIsLive' : IDL.Func(
@@ -108,7 +110,7 @@ export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
   'addMachine' : IDL.Func([NewMachineFields], [], []),
   'addOperator' : IDL.Func([NewOperatorFields], [], []),
-  'addProduct' : IDL.Func([NewProductFields], [], []),
+  'addProduct' : IDL.Func([NewProductFields], [ProductId], []),
   'addProductionEntry' : IDL.Func(
       [
         MachineId,
@@ -134,11 +136,6 @@ export const idlService = IDL.Service({
   'getAllMachinesSortedByName' : IDL.Func([], [IDL.Vec(Machine)], ['query']),
   'getAllOperators' : IDL.Func([], [IDL.Vec(Operator)], ['query']),
   'getAllOperatorsSortedByName' : IDL.Func([], [IDL.Vec(Operator)], ['query']),
-  'getAllProductionEntries' : IDL.Func(
-      [],
-      [IDL.Vec(ProductionEntry)],
-      ['query'],
-    ),
   'getAllProducts' : IDL.Func([], [IDL.Vec(Product)], ['query']),
   'getAllProductsSortedByLoadingTime' : IDL.Func(
       [],
@@ -159,21 +156,7 @@ export const idlService = IDL.Service({
   'getAllProductsUnsorted' : IDL.Func([], [IDL.Vec(Product)], ['query']),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
-  'getProductionEntriesByDateRange' : IDL.Func(
-      [IDL.Int, IDL.Int],
-      [IDL.Vec(ProductionEntry)],
-      ['query'],
-    ),
-  'getProductionEntriesByOperator' : IDL.Func(
-      [OperatorId],
-      [IDL.Vec(ProductionEntry)],
-      ['query'],
-    ),
-  'getProductionEntriesByProduct' : IDL.Func(
-      [ProductId],
-      [IDL.Vec(ProductionEntry)],
-      ['query'],
-    ),
+  'getProductById' : IDL.Func([ProductId], [IDL.Opt(Product)], ['query']),
   'getSortedProductionEntries' : IDL.Func(
       [IDL.Text],
       [IDL.Vec(ProductionEntry)],
@@ -189,11 +172,7 @@ export const idlService = IDL.Service({
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
   'updateMachine' : IDL.Func([MachineId, IDL.Text], [], []),
   'updateOperator' : IDL.Func([OperatorId, IDL.Text], [], []),
-  'updateProduct' : IDL.Func(
-      [ProductId, IDL.Text, IDL.Nat, IDL.Nat, IDL.Nat, IDL.Nat],
-      [],
-      [],
-    ),
+  'updateProduct' : IDL.Func([ProductId, NewProductFields], [], []),
 });
 
 export const idlInitArgs = [];
@@ -219,9 +198,9 @@ export const idlFactory = ({ IDL }) => {
     'unloadingTime' : IDL.Nat,
     'piecesPerCycle' : IDL.Nat,
   });
+  const ProductId = IDL.Nat;
   const MachineId = IDL.Nat;
   const OperatorId = IDL.Nat;
-  const ProductId = IDL.Nat;
   const UserRole = IDL.Variant({
     'admin' : IDL.Null,
     'user' : IDL.Null,
@@ -230,35 +209,6 @@ export const idlFactory = ({ IDL }) => {
   const EntryId = IDL.Nat;
   const Machine = IDL.Record({ 'id' : MachineId, 'name' : IDL.Text });
   const Operator = IDL.Record({ 'id' : OperatorId, 'name' : IDL.Text });
-  const RuntimeType = IDL.Record({
-    'hours' : IDL.Nat,
-    'minutes' : IDL.Nat,
-    'seconds' : IDL.Nat,
-  });
-  const TimeInterval = IDL.Record({
-    'hours' : IDL.Nat,
-    'minutes' : IDL.Nat,
-    'seconds' : IDL.Nat,
-  });
-  const ProductionEntry = IDL.Record({
-    'id' : EntryId,
-    'cycleTime' : IDL.Record({ 'minutes' : IDL.Nat, 'seconds' : IDL.Nat }),
-    'punchOut' : IDL.Int,
-    'productId' : ProductId,
-    'downtimeTime' : IDL.Record({ 'minutes' : IDL.Nat, 'seconds' : IDL.Nat }),
-    'totalRunTime' : RuntimeType,
-    'punchIn' : IDL.Int,
-    'operatorId' : OperatorId,
-    'dutyTime' : TimeInterval,
-    'timestamp' : IDL.Int,
-    'twelveHourTarget' : IDL.Nat,
-    'downtimeReason' : IDL.Text,
-    'tenHourTarget' : IDL.Nat,
-    'numberOfPartsProduced' : IDL.Nat,
-    'quantityProduced' : IDL.Nat,
-    'machineId' : MachineId,
-    'totalOperatorHours' : TimeInterval,
-  });
   const Product = IDL.Record({
     'id' : ProductId,
     'cycleTime' : IDL.Nat,
@@ -268,6 +218,37 @@ export const idlFactory = ({ IDL }) => {
     'piecesPerCycle' : IDL.Nat,
   });
   const UserProfile = IDL.Record({ 'name' : IDL.Text, 'role' : IDL.Text });
+  const ProductionEntry = IDL.Record({
+    'id' : EntryId,
+    'cycleTime' : IDL.Record({ 'minutes' : IDL.Nat, 'seconds' : IDL.Nat }),
+    'punchOut' : IDL.Int,
+    'productId' : ProductId,
+    'downtimeTime' : IDL.Record({ 'minutes' : IDL.Nat, 'seconds' : IDL.Nat }),
+    'totalRunTime' : IDL.Record({
+      'hours' : IDL.Nat,
+      'minutes' : IDL.Nat,
+      'seconds' : IDL.Nat,
+    }),
+    'punchIn' : IDL.Int,
+    'operatorId' : OperatorId,
+    'dutyTime' : IDL.Record({
+      'hours' : IDL.Nat,
+      'minutes' : IDL.Nat,
+      'seconds' : IDL.Nat,
+    }),
+    'timestamp' : IDL.Int,
+    'twelveHourTarget' : IDL.Nat,
+    'downtimeReason' : IDL.Text,
+    'tenHourTarget' : IDL.Nat,
+    'numberOfPartsProduced' : IDL.Nat,
+    'quantityProduced' : IDL.Nat,
+    'machineId' : MachineId,
+    'totalOperatorHours' : IDL.Record({
+      'hours' : IDL.Nat,
+      'minutes' : IDL.Nat,
+      'seconds' : IDL.Nat,
+    }),
+  });
   
   return IDL.Service({
     '_caffeineStorageBlobIsLive' : IDL.Func(
@@ -299,7 +280,7 @@ export const idlFactory = ({ IDL }) => {
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'addMachine' : IDL.Func([NewMachineFields], [], []),
     'addOperator' : IDL.Func([NewOperatorFields], [], []),
-    'addProduct' : IDL.Func([NewProductFields], [], []),
+    'addProduct' : IDL.Func([NewProductFields], [ProductId], []),
     'addProductionEntry' : IDL.Func(
         [
           MachineId,
@@ -329,11 +310,6 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(Operator)],
         ['query'],
       ),
-    'getAllProductionEntries' : IDL.Func(
-        [],
-        [IDL.Vec(ProductionEntry)],
-        ['query'],
-      ),
     'getAllProducts' : IDL.Func([], [IDL.Vec(Product)], ['query']),
     'getAllProductsSortedByLoadingTime' : IDL.Func(
         [],
@@ -354,21 +330,7 @@ export const idlFactory = ({ IDL }) => {
     'getAllProductsUnsorted' : IDL.Func([], [IDL.Vec(Product)], ['query']),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
-    'getProductionEntriesByDateRange' : IDL.Func(
-        [IDL.Int, IDL.Int],
-        [IDL.Vec(ProductionEntry)],
-        ['query'],
-      ),
-    'getProductionEntriesByOperator' : IDL.Func(
-        [OperatorId],
-        [IDL.Vec(ProductionEntry)],
-        ['query'],
-      ),
-    'getProductionEntriesByProduct' : IDL.Func(
-        [ProductId],
-        [IDL.Vec(ProductionEntry)],
-        ['query'],
-      ),
+    'getProductById' : IDL.Func([ProductId], [IDL.Opt(Product)], ['query']),
     'getSortedProductionEntries' : IDL.Func(
         [IDL.Text],
         [IDL.Vec(ProductionEntry)],
@@ -384,11 +346,7 @@ export const idlFactory = ({ IDL }) => {
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
     'updateMachine' : IDL.Func([MachineId, IDL.Text], [], []),
     'updateOperator' : IDL.Func([OperatorId, IDL.Text], [], []),
-    'updateProduct' : IDL.Func(
-        [ProductId, IDL.Text, IDL.Nat, IDL.Nat, IDL.Nat, IDL.Nat],
-        [],
-        [],
-      ),
+    'updateProduct' : IDL.Func([ProductId, NewProductFields], [], []),
   });
 };
 

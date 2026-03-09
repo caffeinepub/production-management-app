@@ -93,11 +93,6 @@ export interface _CaffeineStorageRefillResult {
     success?: boolean;
     topped_up_amount?: bigint;
 }
-export interface TimeInterval {
-    hours: bigint;
-    minutes: bigint;
-    seconds: bigint;
-}
 export interface Operator {
     id: OperatorId;
     name: string;
@@ -109,16 +104,11 @@ export type MachineId = bigint;
 export interface NewOperatorFields {
     name: string;
 }
-export interface RuntimeType {
-    hours: bigint;
-    minutes: bigint;
-    seconds: bigint;
-}
+export type OperatorId = bigint;
 export interface _CaffeineStorageCreateCertificateResult {
     method: string;
     blob_hash: string;
 }
-export type OperatorId = bigint;
 export interface Machine {
     id: MachineId;
     name: string;
@@ -135,10 +125,18 @@ export interface ProductionEntry {
         minutes: bigint;
         seconds: bigint;
     };
-    totalRunTime: RuntimeType;
+    totalRunTime: {
+        hours: bigint;
+        minutes: bigint;
+        seconds: bigint;
+    };
     punchIn: bigint;
     operatorId: OperatorId;
-    dutyTime: TimeInterval;
+    dutyTime: {
+        hours: bigint;
+        minutes: bigint;
+        seconds: bigint;
+    };
     timestamp: bigint;
     twelveHourTarget: bigint;
     downtimeReason: string;
@@ -146,7 +144,11 @@ export interface ProductionEntry {
     numberOfPartsProduced: bigint;
     quantityProduced: bigint;
     machineId: MachineId;
-    totalOperatorHours: TimeInterval;
+    totalOperatorHours: {
+        hours: bigint;
+        minutes: bigint;
+        seconds: bigint;
+    };
 }
 export type EntryId = bigint;
 export interface NewProductFields {
@@ -187,7 +189,7 @@ export interface backendInterface {
     _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
     addMachine(fields: NewMachineFields): Promise<void>;
     addOperator(fields: NewOperatorFields): Promise<void>;
-    addProduct(fields: NewProductFields): Promise<void>;
+    addProduct(productData: NewProductFields): Promise<ProductId>;
     addProductionEntry(machineId: MachineId, operatorId: OperatorId, productId: ProductId, cycleTime: {
         minutes: bigint;
         seconds: bigint;
@@ -204,7 +206,6 @@ export interface backendInterface {
     getAllMachinesSortedByName(): Promise<Array<Machine>>;
     getAllOperators(): Promise<Array<Operator>>;
     getAllOperatorsSortedByName(): Promise<Array<Operator>>;
-    getAllProductionEntries(): Promise<Array<ProductionEntry>>;
     getAllProducts(): Promise<Array<Product>>;
     getAllProductsSortedByLoadingTime(): Promise<Array<Product>>;
     getAllProductsSortedByName(): Promise<Array<Product>>;
@@ -213,9 +214,7 @@ export interface backendInterface {
     getAllProductsUnsorted(): Promise<Array<Product>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
-    getProductionEntriesByDateRange(startDate: bigint, endDate: bigint): Promise<Array<ProductionEntry>>;
-    getProductionEntriesByOperator(operatorId: OperatorId): Promise<Array<ProductionEntry>>;
-    getProductionEntriesByProduct(productId: ProductId): Promise<Array<ProductionEntry>>;
+    getProductById(id: ProductId): Promise<Product | null>;
     getSortedProductionEntries(sortBy: string): Promise<Array<ProductionEntry>>;
     getSortedProducts(sortBy: string): Promise<Array<Product>>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
@@ -223,9 +222,9 @@ export interface backendInterface {
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     updateMachine(id: MachineId, name: string): Promise<void>;
     updateOperator(id: OperatorId, name: string): Promise<void>;
-    updateProduct(id: ProductId, name: string, loadingTime: bigint, unloadingTime: bigint, piecesPerCycle: bigint, cycleTime: bigint): Promise<void>;
+    updateProduct(id: ProductId, productData: NewProductFields): Promise<void>;
 }
-import type { UserProfile as _UserProfile, UserRole as _UserRole, _CaffeineStorageRefillInformation as __CaffeineStorageRefillInformation, _CaffeineStorageRefillResult as __CaffeineStorageRefillResult } from "./declarations/backend.did.d.ts";
+import type { Product as _Product, UserProfile as _UserProfile, UserRole as _UserRole, _CaffeineStorageRefillInformation as __CaffeineStorageRefillInformation, _CaffeineStorageRefillResult as __CaffeineStorageRefillResult } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
     async _caffeineStorageBlobIsLive(arg0: Uint8Array): Promise<boolean> {
@@ -354,7 +353,7 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async addProduct(arg0: NewProductFields): Promise<void> {
+    async addProduct(arg0: NewProductFields): Promise<ProductId> {
         if (this.processError) {
             try {
                 const result = await this.actor.addProduct(arg0);
@@ -514,20 +513,6 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async getAllProductionEntries(): Promise<Array<ProductionEntry>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getAllProductionEntries();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getAllProductionEntries();
-            return result;
-        }
-    }
     async getAllProducts(): Promise<Array<Product>> {
         if (this.processError) {
             try {
@@ -640,46 +625,18 @@ export class Backend implements backendInterface {
             return from_candid_UserRole_n12(this._uploadFile, this._downloadFile, result);
         }
     }
-    async getProductionEntriesByDateRange(arg0: bigint, arg1: bigint): Promise<Array<ProductionEntry>> {
+    async getProductById(arg0: ProductId): Promise<Product | null> {
         if (this.processError) {
             try {
-                const result = await this.actor.getProductionEntriesByDateRange(arg0, arg1);
-                return result;
+                const result = await this.actor.getProductById(arg0);
+                return from_candid_opt_n14(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getProductionEntriesByDateRange(arg0, arg1);
-            return result;
-        }
-    }
-    async getProductionEntriesByOperator(arg0: OperatorId): Promise<Array<ProductionEntry>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getProductionEntriesByOperator(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getProductionEntriesByOperator(arg0);
-            return result;
-        }
-    }
-    async getProductionEntriesByProduct(arg0: ProductId): Promise<Array<ProductionEntry>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getProductionEntriesByProduct(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getProductionEntriesByProduct(arg0);
-            return result;
+            const result = await this.actor.getProductById(arg0);
+            return from_candid_opt_n14(this._uploadFile, this._downloadFile, result);
         }
     }
     async getSortedProductionEntries(arg0: string): Promise<Array<ProductionEntry>> {
@@ -780,17 +737,17 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async updateProduct(arg0: ProductId, arg1: string, arg2: bigint, arg3: bigint, arg4: bigint, arg5: bigint): Promise<void> {
+    async updateProduct(arg0: ProductId, arg1: NewProductFields): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.updateProduct(arg0, arg1, arg2, arg3, arg4, arg5);
+                const result = await this.actor.updateProduct(arg0, arg1);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.updateProduct(arg0, arg1, arg2, arg3, arg4, arg5);
+            const result = await this.actor.updateProduct(arg0, arg1);
             return result;
         }
     }
@@ -802,6 +759,9 @@ function from_candid__CaffeineStorageRefillResult_n4(_uploadFile: (file: Externa
     return from_candid_record_n5(_uploadFile, _downloadFile, value);
 }
 function from_candid_opt_n11(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_Product]): Product | null {
     return value.length === 0 ? null : value[0];
 }
 function from_candid_opt_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [boolean]): boolean | null {

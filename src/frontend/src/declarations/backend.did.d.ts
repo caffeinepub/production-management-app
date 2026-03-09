@@ -39,10 +39,10 @@ export interface ProductionEntry {
   'punchOut' : bigint,
   'productId' : ProductId,
   'downtimeTime' : { 'minutes' : bigint, 'seconds' : bigint },
-  'totalRunTime' : RuntimeType,
+  'totalRunTime' : { 'hours' : bigint, 'minutes' : bigint, 'seconds' : bigint },
   'punchIn' : bigint,
   'operatorId' : OperatorId,
-  'dutyTime' : TimeInterval,
+  'dutyTime' : { 'hours' : bigint, 'minutes' : bigint, 'seconds' : bigint },
   'timestamp' : bigint,
   'twelveHourTarget' : bigint,
   'downtimeReason' : string,
@@ -50,17 +50,11 @@ export interface ProductionEntry {
   'numberOfPartsProduced' : bigint,
   'quantityProduced' : bigint,
   'machineId' : MachineId,
-  'totalOperatorHours' : TimeInterval,
-}
-export interface RuntimeType {
-  'hours' : bigint,
-  'minutes' : bigint,
-  'seconds' : bigint,
-}
-export interface TimeInterval {
-  'hours' : bigint,
-  'minutes' : bigint,
-  'seconds' : bigint,
+  'totalOperatorHours' : {
+    'hours' : bigint,
+    'minutes' : bigint,
+    'seconds' : bigint,
+  },
 }
 export interface UserProfile { 'name' : string, 'role' : string }
 export type UserRole = { 'admin' : null } |
@@ -96,7 +90,7 @@ export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'addMachine' : ActorMethod<[NewMachineFields], undefined>,
   'addOperator' : ActorMethod<[NewOperatorFields], undefined>,
-  'addProduct' : ActorMethod<[NewProductFields], undefined>,
+  'addProduct' : ActorMethod<[NewProductFields], ProductId>,
   'addProductionEntry' : ActorMethod<
     [
       MachineId,
@@ -121,7 +115,6 @@ export interface _SERVICE {
   'getAllMachinesSortedByName' : ActorMethod<[], Array<Machine>>,
   'getAllOperators' : ActorMethod<[], Array<Operator>>,
   'getAllOperatorsSortedByName' : ActorMethod<[], Array<Operator>>,
-  'getAllProductionEntries' : ActorMethod<[], Array<ProductionEntry>>,
   'getAllProducts' : ActorMethod<[], Array<Product>>,
   'getAllProductsSortedByLoadingTime' : ActorMethod<[], Array<Product>>,
   'getAllProductsSortedByName' : ActorMethod<[], Array<Product>>,
@@ -130,18 +123,7 @@ export interface _SERVICE {
   'getAllProductsUnsorted' : ActorMethod<[], Array<Product>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
-  'getProductionEntriesByDateRange' : ActorMethod<
-    [bigint, bigint],
-    Array<ProductionEntry>
-  >,
-  'getProductionEntriesByOperator' : ActorMethod<
-    [OperatorId],
-    Array<ProductionEntry>
-  >,
-  'getProductionEntriesByProduct' : ActorMethod<
-    [ProductId],
-    Array<ProductionEntry>
-  >,
+  'getProductById' : ActorMethod<[ProductId], [] | [Product]>,
   'getSortedProductionEntries' : ActorMethod<[string], Array<ProductionEntry>>,
   'getSortedProducts' : ActorMethod<[string], Array<Product>>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
@@ -149,10 +131,7 @@ export interface _SERVICE {
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'updateMachine' : ActorMethod<[MachineId, string], undefined>,
   'updateOperator' : ActorMethod<[OperatorId, string], undefined>,
-  'updateProduct' : ActorMethod<
-    [ProductId, string, bigint, bigint, bigint, bigint],
-    undefined
-  >,
+  'updateProduct' : ActorMethod<[ProductId, NewProductFields], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

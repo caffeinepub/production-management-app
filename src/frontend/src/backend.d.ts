@@ -7,11 +7,6 @@ export interface None {
     __kind__: "None";
 }
 export type Option<T> = Some<T> | None;
-export interface TimeInterval {
-    hours: bigint;
-    minutes: bigint;
-    seconds: bigint;
-}
 export interface Operator {
     id: OperatorId;
     name: string;
@@ -19,11 +14,6 @@ export interface Operator {
 export type MachineId = bigint;
 export interface NewOperatorFields {
     name: string;
-}
-export interface RuntimeType {
-    hours: bigint;
-    minutes: bigint;
-    seconds: bigint;
 }
 export type OperatorId = bigint;
 export interface Machine {
@@ -42,10 +32,18 @@ export interface ProductionEntry {
         minutes: bigint;
         seconds: bigint;
     };
-    totalRunTime: RuntimeType;
+    totalRunTime: {
+        hours: bigint;
+        minutes: bigint;
+        seconds: bigint;
+    };
     punchIn: bigint;
     operatorId: OperatorId;
-    dutyTime: TimeInterval;
+    dutyTime: {
+        hours: bigint;
+        minutes: bigint;
+        seconds: bigint;
+    };
     timestamp: bigint;
     twelveHourTarget: bigint;
     downtimeReason: string;
@@ -53,7 +51,11 @@ export interface ProductionEntry {
     numberOfPartsProduced: bigint;
     quantityProduced: bigint;
     machineId: MachineId;
-    totalOperatorHours: TimeInterval;
+    totalOperatorHours: {
+        hours: bigint;
+        minutes: bigint;
+        seconds: bigint;
+    };
 }
 export type EntryId = bigint;
 export interface NewProductFields {
@@ -87,7 +89,7 @@ export enum UserRole {
 export interface backendInterface {
     addMachine(fields: NewMachineFields): Promise<void>;
     addOperator(fields: NewOperatorFields): Promise<void>;
-    addProduct(fields: NewProductFields): Promise<void>;
+    addProduct(productData: NewProductFields): Promise<ProductId>;
     addProductionEntry(machineId: MachineId, operatorId: OperatorId, productId: ProductId, cycleTime: {
         minutes: bigint;
         seconds: bigint;
@@ -104,7 +106,6 @@ export interface backendInterface {
     getAllMachinesSortedByName(): Promise<Array<Machine>>;
     getAllOperators(): Promise<Array<Operator>>;
     getAllOperatorsSortedByName(): Promise<Array<Operator>>;
-    getAllProductionEntries(): Promise<Array<ProductionEntry>>;
     getAllProducts(): Promise<Array<Product>>;
     getAllProductsSortedByLoadingTime(): Promise<Array<Product>>;
     getAllProductsSortedByName(): Promise<Array<Product>>;
@@ -113,9 +114,7 @@ export interface backendInterface {
     getAllProductsUnsorted(): Promise<Array<Product>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
-    getProductionEntriesByDateRange(startDate: bigint, endDate: bigint): Promise<Array<ProductionEntry>>;
-    getProductionEntriesByOperator(operatorId: OperatorId): Promise<Array<ProductionEntry>>;
-    getProductionEntriesByProduct(productId: ProductId): Promise<Array<ProductionEntry>>;
+    getProductById(id: ProductId): Promise<Product | null>;
     getSortedProductionEntries(sortBy: string): Promise<Array<ProductionEntry>>;
     getSortedProducts(sortBy: string): Promise<Array<Product>>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
@@ -123,5 +122,5 @@ export interface backendInterface {
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     updateMachine(id: MachineId, name: string): Promise<void>;
     updateOperator(id: OperatorId, name: string): Promise<void>;
-    updateProduct(id: ProductId, name: string, loadingTime: bigint, unloadingTime: bigint, piecesPerCycle: bigint, cycleTime: bigint): Promise<void>;
+    updateProduct(id: ProductId, productData: NewProductFields): Promise<void>;
 }

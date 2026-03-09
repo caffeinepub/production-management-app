@@ -1,38 +1,234 @@
 import Map "mo:core/Map";
-import Int "mo:core/Int";
 import Nat "mo:core/Nat";
-import Array "mo:core/Array";
-import Time "mo:core/Time";
+import Int "mo:core/Int";
 import Order "mo:core/Order";
 import Runtime "mo:core/Runtime";
-import Principal "mo:core/Principal";
-import MixinStorage "blob-storage/Mixin";
+import Array "mo:core/Array";
 import Float "mo:core/Float";
-import MixinAuthorization "authorization/MixinAuthorization";
-import AccessControl "authorization/access-control";
-import Migration "migration";
+import Principal "mo:core/Principal";
+import Time "mo:core/Time";
 
-(with migration = Migration.run)
+import AccessControl "authorization/access-control";
+import MixinAuthorization "authorization/MixinAuthorization";
+import MixinStorage "blob-storage/Mixin";
+import Text "mo:core/Text";
+import Iter "mo:core/Iter";
+
 actor {
+  // Components
+  include MixinStorage();
+
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
 
-  include MixinStorage();
-
-  ///////////////////////////////
-  // User Profile Management   //
-  /////////////////////////////
-
+  ///////////
+  // Types //
+  ///////////
   public type UserProfile = {
     name : Text;
     role : Text;
   };
 
-  let userProfiles = Map.empty<Principal, UserProfile>();
+  public type Product = {
+    id : ProductId;
+    name : Text;
+    loadingTime : Nat;
+    unloadingTime : Nat;
+    piecesPerCycle : Nat;
+    cycleTime : Nat;
+  };
 
+  public type Machine = {
+    id : MachineId;
+    name : Text;
+  };
+
+  public type Operator = {
+    id : OperatorId;
+    name : Text;
+  };
+
+  public type ProductionEntry = {
+    id : EntryId;
+    timestamp : Int;
+    machineId : MachineId;
+    operatorId : OperatorId;
+    productId : ProductId;
+    cycleTime : {
+      minutes : Nat;
+      seconds : Nat;
+    };
+    quantityProduced : Nat;
+    numberOfPartsProduced : Nat;
+    totalRunTime : {
+      hours : Nat;
+      minutes : Nat;
+      seconds : Nat;
+    };
+    downtimeReason : Text;
+    downtimeTime : {
+      minutes : Nat;
+      seconds : Nat;
+    };
+    punchIn : Int;
+    punchOut : Int;
+    dutyTime : {
+      hours : Nat;
+      minutes : Nat;
+      seconds : Nat;
+    };
+    tenHourTarget : Nat;
+    twelveHourTarget : Nat;
+    totalOperatorHours : {
+      hours : Nat;
+      minutes : Nat;
+      seconds : Nat;
+    };
+  };
+
+  public type ProductId = Nat;
+  public type MachineId = Nat;
+  public type OperatorId = Nat;
+  public type EntryId = Nat;
+
+  public type ProductEntry = {
+    id : ProductId;
+    name : Text;
+    loadingTime : Nat;
+    unloadingTime : Nat;
+    piecesPerCycle : Nat;
+    cycleTime : Nat;
+  };
+
+  public type NewProductFields = {
+    name : Text;
+    loadingTime : Nat;
+    unloadingTime : Nat;
+    piecesPerCycle : Nat;
+    cycleTime : Nat;
+  };
+
+  public type MachineEntry = {
+    id : Nat;
+    name : Text;
+  };
+
+  public type NewMachineFields = {
+    name : Text;
+  };
+
+  public type OperatorEntry = {
+    id : Nat;
+    name : Text;
+  };
+
+  public type NewOperatorFields = {
+    name : Text;
+  };
+
+  public type ProductionEntryEntry = {
+    id : Nat;
+    timestamp : Int;
+    machineId : Nat;
+    operatorId : Nat;
+    productId : Nat;
+    cycleTime : {
+      minutes : Nat;
+      seconds : Nat;
+    };
+    quantityProduced : Nat;
+    numberOfPartsProduced : Nat;
+    totalRunTime : {
+      hours : Nat;
+      minutes : Nat;
+      seconds : Nat;
+    };
+    downtimeReason : Text;
+    downtimeTime : {
+      minutes : Nat;
+      seconds : Nat;
+    };
+    punchIn : Int;
+    punchOut : Int;
+    dutyTime : {
+      hours : Nat;
+      minutes : Nat;
+      seconds : Nat;
+    };
+    tenHourTarget : Nat;
+    twelveHourTarget : Nat;
+    totalOperatorHours : {
+      hours : Nat;
+      minutes : Nat;
+      seconds : Nat;
+    };
+  };
+
+  ///////////////////////////////
+  // Compare Functions         //
+  ///////////////////////////////
+  module Product {
+    public func compareById(a : Product, b : Product) : Order.Order {
+      Nat.compare(a.id, b.id);
+    };
+    public func compareByName(a : Product, b : Product) : Order.Order {
+      Text.compare(a.name, b.name);
+    };
+    public func compareByLoadingTime(a : Product, b : Product) : Order.Order {
+      Nat.compare(a.loadingTime, b.loadingTime);
+    };
+    public func compareByUnloadingTime(a : Product, b : Product) : Order.Order {
+      Nat.compare(a.unloadingTime, b.unloadingTime);
+    };
+    public func compareByPiecesPerCycle(a : Product, b : Product) : Order.Order {
+      Nat.compare(a.piecesPerCycle, b.piecesPerCycle);
+    };
+  };
+
+  module Machine {
+    public func compareById(a : Machine, b : Machine) : Order.Order {
+      Nat.compare(a.id, b.id);
+    };
+    public func compareByName(a : Machine, b : Machine) : Order.Order {
+      Text.compare(a.name, b.name);
+    };
+  };
+
+  module Operator {
+    public func compareById(a : Operator, b : Operator) : Order.Order {
+      Nat.compare(a.id, b.id);
+    };
+    public func compareByName(a : Operator, b : Operator) : Order.Order {
+      Text.compare(a.name, b.name);
+    };
+  };
+
+  module ProductionEntry {
+    public func compareByTimestamp(a : ProductionEntry, b : ProductionEntry) : Order.Order {
+      Int.compare(a.timestamp, b.timestamp);
+    };
+  };
+
+  ///////////////////////////////
+  // State                     //
+  ///////////////////////////////
+  let userProfiles = Map.empty<Principal, UserProfile>();
+  let products = Map.empty<ProductId, Product>();
+  let machines = Map.empty<MachineId, Machine>();
+  let operators = Map.empty<OperatorId, Operator>();
+  let entries = Map.empty<EntryId, ProductionEntry>();
+
+  var nextProductId = 1;
+  var nextMachineId = 1;
+  var nextOperatorId = 1;
+  var nextEntryId = 1;
+
+  ///////////////////////////////
+  // User Profile Management   //
+  ///////////////////////////////
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can access profiles");
+      Runtime.trap("Unauthorized: Only users can get profiles");
     };
     userProfiles.get(caller);
   };
@@ -52,152 +248,58 @@ actor {
   };
 
   ///////////////////////////////
-  // Product Management       //
-  /////////////////////////////
-
-  public type ProductId = Nat;
-  let products = Map.empty<ProductId, Product>();
-  var nextProductId = 1;
-
-  public type Product = {
-    id : ProductId;
-    name : Text;
-    loadingTime : Nat;
-    unloadingTime : Nat;
-    piecesPerCycle : Nat;
-    cycleTime : Nat;
+  // Product Management        //
+  ///////////////////////////////
+  public query ({ caller }) func getAllProducts() : async [Product] {
+    products.values().toArray();
   };
 
-  module Product {
-    public func compareById(a : Product, b : Product) : Order.Order {
-      Nat.compare(a.id, b.id);
-    };
-    public func compareByName(a : Product, b : Product) : Order.Order {
-      Text.compare(a.name, b.name);
-    };
-    public func compareByLoadingTime(a : Product, b : Product) : Order.Order {
-      Nat.compare(a.loadingTime, b.loadingTime);
-    };
-    public func compareByUnloadingTime(a : Product, b : Product) : Order.Order {
-      Nat.compare(a.unloadingTime, b.unloadingTime);
-    };
-    public func compareByPiecesPerCycle(a : Product, b : Product) : Order.Order {
-      Nat.compare(a.piecesPerCycle, b.piecesPerCycle);
-    };
+  public query ({ caller }) func getProductById(id : ProductId) : async ?Product {
+    products.get(id);
   };
 
-  public type NewProductFields = {
-    name : Text;
-    loadingTime : Nat;
-    unloadingTime : Nat;
-    piecesPerCycle : Nat;
-    cycleTime : Nat;
-  };
-
-  public shared ({ caller }) func addProduct(fields : NewProductFields) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can add products");
-    };
-
-    if (products.values().toArray().any(func(p) { p.name == fields.name })) {
-      Runtime.trap("Product name must be unique");
-    };
-
-    let product : Product = {
-      id = nextProductId;
-      name = fields.name;
-      loadingTime = fields.loadingTime;
-      unloadingTime = fields.unloadingTime;
-      piecesPerCycle = fields.piecesPerCycle;
-      cycleTime = fields.cycleTime;
-    };
-    products.add(product.id, product);
+  public shared ({ caller }) func addProduct(productData : NewProductFields) : async ProductId {
+    let id = nextProductId;
     nextProductId += 1;
+
+    let newProduct : Product = {
+      id;
+      name = productData.name;
+      loadingTime = productData.loadingTime;
+      unloadingTime = productData.unloadingTime;
+      piecesPerCycle = productData.piecesPerCycle;
+      cycleTime = productData.cycleTime;
+    };
+
+    products.add(id, newProduct);
+    id;
   };
 
-  public shared ({ caller }) func updateProduct(id : ProductId, name : Text, loadingTime : Nat, unloadingTime : Nat, piecesPerCycle : Nat, cycleTime : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can update products");
-    };
-
-    if (products.values().toArray().any(func(p) { p.id != id and p.name == name })) {
-      Runtime.trap("Product name must be unique");
-    };
-
+  public shared ({ caller }) func updateProduct(id : ProductId, productData : NewProductFields) : async () {
     switch (products.get(id)) {
       case (null) { Runtime.trap("Product not found") };
       case (_) {
-        let product : Product = {
+        let updatedProduct : Product = {
           id;
-          name;
-          loadingTime;
-          unloadingTime;
-          piecesPerCycle;
-          cycleTime;
+          name = productData.name;
+          loadingTime = productData.loadingTime;
+          unloadingTime = productData.unloadingTime;
+          piecesPerCycle = productData.piecesPerCycle;
+          cycleTime = productData.cycleTime;
         };
-        products.add(id, product);
+        products.add(id, updatedProduct);
       };
     };
   };
 
   public shared ({ caller }) func deleteProduct(id : ProductId) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can delete products");
-    };
     products.remove(id);
   };
 
-  public query func getAllProducts() : async [Product] {
-    products.values().toArray();
-  };
-
-  public query func getAllProductsSortedByName() : async [Product] {
-    products.values().toArray().sort(Product.compareByName);
-  };
-
-  public query func getAllProductsSortedByLoadingTime() : async [Product] {
-    products.values().toArray().sort(Product.compareByLoadingTime);
-  };
-
-  public query func getAllProductsSortedByUnloadingTime() : async [Product] {
-    products.values().toArray().sort(Product.compareByUnloadingTime);
-  };
-
-  public query func getAllProductsSortedByPiecesPerCycle() : async [Product] {
-    products.values().toArray().sort(Product.compareByPiecesPerCycle);
-  };
-
-  ///////////////////////////////
-  // Machine Management      //
-  /////////////////////////////
-
-  public type MachineId = Nat;
-  let machines = Map.empty<MachineId, Machine>();
-  var nextMachineId = 1;
-
-  public type Machine = {
-    id : MachineId;
-    name : Text;
-  };
-
-  module Machine {
-    public func compareById(a : Machine, b : Machine) : Order.Order {
-      Nat.compare(a.id, b.id);
-    };
-    public func compareByName(a : Machine, b : Machine) : Order.Order {
-      Text.compare(a.name, b.name);
-    };
-  };
-
-  public type NewMachineFields = {
-    name : Text;
-  };
-
+  //////////////////////////////
+  // Machine Management       //
+  //////////////////////////////
   public shared ({ caller }) func addMachine(fields : NewMachineFields) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can add machines");
-    };
-
     if (machines.values().toArray().any(func(m) { m.name == fields.name })) {
       Runtime.trap("Machine name must be unique");
     };
@@ -211,10 +313,6 @@ actor {
   };
 
   public shared ({ caller }) func updateMachine(id : MachineId, name : Text) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can update machines");
-    };
-
     if (machines.values().toArray().any(func(m) { m.id != id and m.name == name })) {
       Runtime.trap("Machine name must be unique");
     };
@@ -232,51 +330,13 @@ actor {
   };
 
   public shared ({ caller }) func deleteMachine(id : MachineId) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can delete machines");
-    };
     machines.remove(id);
   };
 
-  public query func getAllMachines() : async [Machine] {
-    machines.values().toArray();
-  };
-
-  public query func getAllMachinesSortedByName() : async [Machine] {
-    machines.values().toArray().sort(Machine.compareByName);
-  };
-
   ///////////////////////////////
-  // Operator Management     //
-  /////////////////////////////
-
-  public type OperatorId = Nat;
-  let operators = Map.empty<OperatorId, Operator>();
-  var nextOperatorId = 1;
-
-  public type Operator = {
-    id : OperatorId;
-    name : Text;
-  };
-
-  module Operator {
-    public func compareById(a : Operator, b : Operator) : Order.Order {
-      Nat.compare(a.id, b.id);
-    };
-    public func compareByName(a : Operator, b : Operator) : Order.Order {
-      Text.compare(a.name, b.name);
-    };
-  };
-
-  public type NewOperatorFields = {
-    name : Text;
-  };
-
+  // Operator Management       //
+  //////////////////////////////
   public shared ({ caller }) func addOperator(fields : NewOperatorFields) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can add operators");
-    };
-
     if (operators.values().toArray().any(func(o) { o.name == fields.name })) {
       Runtime.trap("Operator name must be unique");
     };
@@ -290,10 +350,6 @@ actor {
   };
 
   public shared ({ caller }) func updateOperator(id : OperatorId, name : Text) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can update operators");
-    };
-
     if (operators.values().toArray().any(func(o) { o.id != id and o.name == name })) {
       Runtime.trap("Operator name must be unique");
     };
@@ -311,71 +367,12 @@ actor {
   };
 
   public shared ({ caller }) func deleteOperator(id : OperatorId) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can delete operators");
-    };
     operators.remove(id);
   };
 
-  public query func getAllOperators() : async [Operator] {
-    operators.values().toArray();
-  };
-
-  public query func getAllOperatorsSortedByName() : async [Operator] {
-    operators.values().toArray().sort(Operator.compareByName);
-  };
-
-  //////////////////////////////////////
-  // Production Entries Management  //
-  ////////////////////////////////////
-
-  public type EntryId = Nat;
-  let entries = Map.empty<EntryId, ProductionEntry>();
-  var nextEntryId = 1;
-
-  public type ProductionEntry = {
-    id : EntryId;
-    timestamp : Int;
-    machineId : MachineId;
-    operatorId : OperatorId;
-    productId : ProductId;
-    cycleTime : {
-      minutes : Nat;
-      seconds : Nat;
-    };
-    quantityProduced : Nat;
-    numberOfPartsProduced : Nat;
-    totalRunTime : RuntimeType;
-    downtimeReason : Text;
-    downtimeTime : {
-      minutes : Nat;
-      seconds : Nat;
-    };
-    punchIn : Int;
-    punchOut : Int;
-    dutyTime : TimeInterval;
-    tenHourTarget : Nat;
-    twelveHourTarget : Nat;
-    totalOperatorHours : TimeInterval;
-  };
-
-  public type RuntimeType = {
-    hours : Nat;
-    minutes : Nat;
-    seconds : Nat;
-  };
-
-  public type TimeInterval = {
-    hours : Nat;
-    minutes : Nat;
-    seconds : Nat;
-  };
-
-  module ProductionEntry {
-    public func compareByTimestamp(a : ProductionEntry, b : ProductionEntry) : Order.Order {
-      Int.compare(a.timestamp, b.timestamp);
-    };
-  };
+  ///////////////////////////////
+  // Production Entries        //
+  /////////////////////////////
 
   public shared ({ caller }) func addProductionEntry(
     machineId : MachineId,
@@ -395,10 +392,6 @@ actor {
     punchOut : Int,
     timestamp : ?Int,
   ) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can add production entries");
-    };
-
     let product = switch (products.get(productId)) {
       case (null) { Runtime.trap("Product not found") };
       case (?p) { p };
@@ -421,14 +414,14 @@ actor {
       seconds = 0;
     };
 
-    // Calculate adjusted duty time
     let dutyTime = calculateAdjustedDutyTime(punchIn, punchOut);
     let dutyTimeSeconds = convertTimeIntervalToSeconds(dutyTime);
-    let totalOperatorHours = calculateTotalOperatorHours(
+    let totalOperatorHours = calculateTotalOperatorHoursWithDowntime(
       dutyTimeSeconds,
       quantityProduced,
       tenHourTarget,
       twelveHourTarget,
+      downtimeInSeconds,
     );
 
     let entry : ProductionEntry = {
@@ -455,8 +448,13 @@ actor {
     nextEntryId += 1;
   };
 
+  // Implement the new method deleteProductionEntry
+  public shared ({ caller }) func deleteProductionEntry(entryId : EntryId) : async () {
+    entries.remove(entryId);
+  };
+
   func calculateTenHourTarget(formCycleTimeSeconds : Nat, loadingTime : Nat, unloadingTime : Nat) : Nat {
-    let productiveTimeInSeconds : Float = 34200.0; // 9.5 hours
+    let productiveTimeInSeconds : Float = 32490.0; // 9.5 hours * 0.95
     let totalCycleTime = formCycleTimeSeconds + loadingTime + unloadingTime;
 
     if (totalCycleTime == 0) {
@@ -470,7 +468,7 @@ actor {
   };
 
   func calculateTwelveHourTarget(formCycleTimeSeconds : Nat, loadingTime : Nat, unloadingTime : Nat) : Nat {
-    let productiveTimeInSeconds : Float = 39600.0; // 11 hours
+    let productiveTimeInSeconds : Float = 37620.0; // 11 hours * 0.95
     let totalCycleTime = formCycleTimeSeconds + loadingTime + unloadingTime;
 
     if (totalCycleTime == 0) {
@@ -483,9 +481,16 @@ actor {
     Int.abs(rounded.toInt());
   };
 
-  func calculateAdjustedDutyTime(punchIn : Int, punchOut : Int) : TimeInterval {
-    // Utility function for converting seconds to hours, minutes, seconds
-    func secondsToHMS(totalSeconds : Int) : TimeInterval {
+  func calculateAdjustedDutyTime(punchIn : Int, punchOut : Int) : {
+    hours : Nat;
+    minutes : Nat;
+    seconds : Nat;
+  } {
+    func secondsToHMS(totalSeconds : Int) : {
+      hours : Nat;
+      minutes : Nat;
+      seconds : Nat;
+    } {
       let totalSecondsNat = Int.abs(totalSeconds);
       let hours = (totalSecondsNat / 3600).toNat();
       let minutes = ((totalSecondsNat % 3600) / 60).toNat();
@@ -500,7 +505,6 @@ actor {
         let remainder = Int.abs(durationSeconds % 3600);
         let totalDurationMinutes = (hours * 60).toInt() + (remainder / 60);
 
-        // Subtract 30 minutes only if the original duration is less than 12 hours
         switch (durationSeconds >= 43200) {
           case (true) { secondsToHMS(durationSeconds) };
           case (false) {
@@ -522,9 +526,13 @@ actor {
     quantityProduced : Nat,
     tenHourTarget : Nat,
     twelveHourTarget : Nat,
-  ) : TimeInterval {
+  ) : {
+    hours : Nat;
+    minutes : Nat;
+    seconds : Nat;
+  } {
     var targetHours : Nat = 10;
-    if (dutyTimeSeconds >= 43200) { // 12 hours
+    if (dutyTimeSeconds >= 43200) {
       targetHours := 12;
     };
 
@@ -547,49 +555,62 @@ actor {
     { hours; minutes; seconds };
   };
 
-  func convertTimeIntervalToSeconds(interval : TimeInterval) : Nat {
+  func convertTimeIntervalToSeconds(interval : { hours : Nat; minutes : Nat; seconds : Nat }) : Nat {
     (interval.hours * 3600) + (interval.minutes * 60) + interval.seconds;
   };
 
-  public query func getAllProductionEntries() : async [ProductionEntry] {
-    entries.values().toArray();
-  };
-
-  public query func getProductionEntriesByDateRange(startDate : Int, endDate : Int) : async [ProductionEntry] {
-    entries.values().toArray().filter(
-      func(entry) {
-        entry.timestamp >= startDate and entry.timestamp <= endDate
-      }
+  func calculateTotalOperatorHoursWithDowntime(
+    dutyTimeSeconds : Nat,
+    quantityProduced : Nat,
+    tenHourTarget : Nat,
+    twelveHourTarget : Nat,
+    downtimeSeconds : Nat,
+  ) : { hours : Nat; minutes : Nat; seconds : Nat } {
+    let baseHours = calculateTotalOperatorHours(
+      dutyTimeSeconds,
+      quantityProduced,
+      tenHourTarget,
+      twelveHourTarget,
     );
-  };
-
-  public query func getProductionEntriesByOperator(operatorId : OperatorId) : async [ProductionEntry] {
-    entries.values().toArray().filter(
-      func(entry) {
-        entry.operatorId == operatorId
-      }
-    );
-  };
-
-  public query func getProductionEntriesByProduct(productId : ProductId) : async [ProductionEntry] {
-    entries.values().toArray().filter(
-      func(entry) {
-        entry.productId == productId
-      }
-    );
-  };
-
-  public shared ({ caller }) func deleteProductionEntry(entryId : EntryId) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can delete production entries");
+    let baseSeconds = convertTimeIntervalToSeconds(baseHours);
+    let totalSeconds = baseSeconds + downtimeSeconds;
+    {
+      hours = totalSeconds / 3600;
+      minutes = (totalSeconds % 3600) / 60;
+      seconds = totalSeconds % 60;
     };
+  };
 
-    switch (entries.get(entryId)) {
-      case (null) { Runtime.trap("Entry not found") };
-      case (?_) {
-        entries.remove(entryId);
-      };
-    };
+  public query func getAllProductsSortedByName() : async [Product] {
+    products.values().toArray().sort(Product.compareByName);
+  };
+
+  public query func getAllProductsSortedByLoadingTime() : async [Product] {
+    products.values().toArray().sort(Product.compareByLoadingTime);
+  };
+
+  public query func getAllProductsSortedByUnloadingTime() : async [Product] {
+    products.values().toArray().sort(Product.compareByUnloadingTime);
+  };
+
+  public query func getAllProductsSortedByPiecesPerCycle() : async [Product] {
+    products.values().toArray().sort(Product.compareByPiecesPerCycle);
+  };
+
+  public query func getAllMachines() : async [Machine] {
+    machines.values().toArray();
+  };
+
+  public query func getAllMachinesSortedByName() : async [Machine] {
+    machines.values().toArray().sort(Machine.compareByName);
+  };
+
+  public query func getAllOperators() : async [Operator] {
+    operators.values().toArray();
+  };
+
+  public query func getAllOperatorsSortedByName() : async [Operator] {
+    operators.values().toArray().sort(Operator.compareByName);
   };
 
   public query func getAllProductsUnsorted() : async [Product] {

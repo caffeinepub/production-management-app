@@ -1,16 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -18,422 +7,312 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Loader2, Package, ArrowUpDown } from 'lucide-react';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
-  useGetAllProducts,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import type React from "react";
+import { useState } from "react";
+import type { Product } from "../../backend";
+import {
   useAddProduct,
-  useUpdateProduct,
   useDeleteProduct,
-} from '../../hooks/useQueries';
-import { useActor } from '../../hooks/useActor';
-import type { Product, ProductId } from '../../backend';
-import { toast } from 'sonner';
-import { formatSecondsAsMinutesSeconds } from '../../utils/timeFormat';
-import MasterDataLoadError from '../MasterDataLoadError';
-import { normalizeBackendError } from '../../utils/backendError';
+  useGetAllProducts,
+  useUpdateProduct,
+} from "../../hooks/useQueries";
+import LoadingPanel from "../LoadingPanel";
+import MasterDataLoadError from "../MasterDataLoadError";
 
-type SortField = 'name' | 'id' | 'loadingTime' | 'unloadingTime' | 'piecesPerCycle';
+interface ProductForm {
+  name: string;
+  loadingTime: string;
+  unloadingTime: string;
+  piecesPerCycle: string;
+  cycleTime: string;
+}
+
+const emptyForm: ProductForm = {
+  name: "",
+  loadingTime: "0",
+  unloadingTime: "0",
+  piecesPerCycle: "1",
+  cycleTime: "0",
+};
 
 export default function ProductsManager() {
-  const { actor } = useActor();
-  const [sortBy, setSortBy] = useState<SortField>('name');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  
-  const { data: products = [], isLoading, isFetched, error, refetch } = useGetAllProducts('name');
-  
+  const {
+    data: products = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useGetAllProducts();
   const addProduct = useAddProduct();
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
 
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    loadingTime: '',
-    unloadingTime: '',
-    piecesPerCycle: '',
-    cycleTime: '',
-  });
+  const [form, setForm] = useState<ProductForm>(emptyForm);
+  const [deleteConfirm, setDeleteConfirm] = useState<Product | null>(null);
 
-  const handleSort = (field: SortField) => {
-    if (sortBy === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(field);
-      setSortOrder('asc');
-    }
-  };
-
-  const sortedProducts = useMemo(() => {
-    let sorted = [...products];
-    
-    // Client-side sorting for all fields
-    sorted.sort((a, b) => {
-      let comparison = 0;
-      
-      switch (sortBy) {
-        case 'id':
-          comparison = Number(a.id) - Number(b.id);
-          break;
-        case 'name':
-          comparison = a.name.localeCompare(b.name);
-          break;
-        case 'loadingTime':
-          comparison = Number(a.loadingTime) - Number(b.loadingTime);
-          break;
-        case 'unloadingTime':
-          comparison = Number(a.unloadingTime) - Number(b.unloadingTime);
-          break;
-        case 'piecesPerCycle':
-          comparison = Number(a.piecesPerCycle) - Number(b.piecesPerCycle);
-          break;
-      }
-      
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
-    
-    return sorted;
-  }, [products, sortBy, sortOrder]);
-
-  const handleOpenDialog = (product?: Product) => {
-    if (!actor) {
-      toast.error('Please wait for the system to initialize');
-      return;
-    }
-    
-    if (product) {
-      setEditingProduct(product);
-      setFormData({
-        name: product.name,
-        loadingTime: Number(product.loadingTime).toString(),
-        unloadingTime: Number(product.unloadingTime).toString(),
-        piecesPerCycle: Number(product.piecesPerCycle).toString(),
-        cycleTime: Number(product.cycleTime).toString(),
-      });
-    } else {
-      setEditingProduct(null);
-      setFormData({ name: '', loadingTime: '0', unloadingTime: '0', piecesPerCycle: '1', cycleTime: '0' });
-    }
-    setIsDialogOpen(true);
-  };
-
-  const handleCloseDialog = () => {
-    setIsDialogOpen(false);
+  const openAdd = () => {
     setEditingProduct(null);
-    setFormData({ name: '', loadingTime: '0', unloadingTime: '0', piecesPerCycle: '1', cycleTime: '0' });
+    setForm(emptyForm);
+    setDialogOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!actor) {
-      toast.error('Please wait for the system to initialize');
-      return;
-    }
-
-    const trimmedName = formData.name.trim();
-    if (!trimmedName) {
-      toast.error('Product name is required');
-      return;
-    }
-
-    const loadingTime = parseInt(formData.loadingTime) || 0;
-    const unloadingTime = parseInt(formData.unloadingTime) || 0;
-    const piecesPerCycle = parseInt(formData.piecesPerCycle) || 1;
-    const cycleTime = parseInt(formData.cycleTime) || 0;
-
-    if (piecesPerCycle < 1) {
-      toast.error('Pieces per cycle must be at least 1');
-      return;
-    }
-
-    try {
-      if (editingProduct) {
-        await updateProduct.mutateAsync({
-          id: editingProduct.id,
-          name: trimmedName,
-          loadingTime,
-          unloadingTime,
-          piecesPerCycle,
-          cycleTime,
-        });
-      } else {
-        await addProduct.mutateAsync({
-          name: trimmedName,
-          loadingTime,
-          unloadingTime,
-          piecesPerCycle,
-          cycleTime,
-        });
-      }
-      handleCloseDialog();
-    } catch (error) {
-      // Error is already handled by mutation hooks with normalized messages
-      console.error('Save error:', error);
-    }
+  const openEdit = (product: Product) => {
+    setEditingProduct(product);
+    setForm({
+      name: product.name,
+      loadingTime: String(product.loadingTime),
+      unloadingTime: String(product.unloadingTime),
+      piecesPerCycle: String(product.piecesPerCycle),
+      cycleTime: String(product.cycleTime),
+    });
+    setDialogOpen(true);
   };
 
-  const handleDelete = async (id: ProductId) => {
-    if (!actor) {
-      toast.error('Please wait for the system to initialize');
-      return;
-    }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const data = {
+      name: form.name.trim(),
+      loadingTime: BigInt(Number.parseInt(form.loadingTime) || 0),
+      unloadingTime: BigInt(Number.parseInt(form.unloadingTime) || 0),
+      piecesPerCycle: BigInt(Number.parseInt(form.piecesPerCycle) || 1),
+      cycleTime: BigInt(Number.parseInt(form.cycleTime) || 0),
+    };
 
-    if (confirm('Are you sure you want to delete this product?')) {
-      try {
-        await deleteProduct.mutateAsync(id);
-      } catch (error) {
-        console.error('Delete error:', error);
-      }
+    if (editingProduct) {
+      await updateProduct.mutateAsync({ id: editingProduct.id, data });
+    } else {
+      await addProduct.mutateAsync(data);
     }
+    setDialogOpen(false);
   };
 
-  const isSaving = addProduct.isPending || updateProduct.isPending;
-  const showInitialLoading = isLoading && !isFetched;
-  const hasError = error && isFetched;
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    await deleteProduct.mutateAsync(deleteConfirm.id);
+    setDeleteConfirm(null);
+  };
+
+  const isMutating = addProduct.isPending || updateProduct.isPending;
+
+  if (isLoading) return <LoadingPanel message="Loading products..." />;
+  if (isError)
+    return (
+      <MasterDataLoadError
+        message="Failed to load products."
+        onRetry={refetch}
+      />
+    );
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Products</CardTitle>
-              <CardDescription>Manage products with loading and unloading times</CardDescription>
-            </div>
-            <Button onClick={() => handleOpenDialog()} className="gap-2" disabled={isSaving || !actor}>
-              <Plus className="h-4 w-4" />
-              Add Product
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {showInitialLoading ? (
-            <div className="text-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-3" />
-              <p className="text-muted-foreground">Loading products...</p>
-            </div>
-          ) : hasError ? (
-            <MasterDataLoadError 
-              title="Failed to load products"
-              message={normalizeBackendError(error)}
-              onRetry={() => refetch()}
-            />
-          ) : products.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="font-medium">No products yet</p>
-              <p className="text-sm">Add your first product to get started.</p>
-            </div>
-          ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="-ml-3 h-8 data-[state=open]:bg-accent"
-                        onClick={() => handleSort('name')}
-                      >
-                        Name
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
-                      </Button>
-                    </TableHead>
-                    <TableHead>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="-ml-3 h-8 data-[state=open]:bg-accent"
-                        onClick={() => handleSort('id')}
-                      >
-                        ID
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
-                      </Button>
-                    </TableHead>
-                    <TableHead>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="-ml-3 h-8 data-[state=open]:bg-accent"
-                        onClick={() => handleSort('loadingTime')}
-                      >
-                        Loading Time
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
-                      </Button>
-                    </TableHead>
-                    <TableHead>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="-ml-3 h-8 data-[state=open]:bg-accent"
-                        onClick={() => handleSort('unloadingTime')}
-                      >
-                        Unloading Time
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
-                      </Button>
-                    </TableHead>
-                    <TableHead>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="-ml-3 h-8 data-[state=open]:bg-accent"
-                        onClick={() => handleSort('piecesPerCycle')}
-                      >
-                        Pieces per Cycle
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
-                      </Button>
-                    </TableHead>
-                    <TableHead>Cycle Time</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+    <Card className="border-border shadow-sm">
+      <CardHeader className="flex flex-row items-center justify-between bg-primary/5 rounded-t-lg border-b border-border">
+        <CardTitle className="text-primary">Products</CardTitle>
+        <Button
+          onClick={openAdd}
+          size="sm"
+          className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
+        >
+          <Plus className="h-4 w-4" />
+          Add Product
+        </Button>
+      </CardHeader>
+      <CardContent className="pt-4">
+        {products.length === 0 ? (
+          <p className="text-center text-muted-foreground py-8">
+            No products yet. Add your first product.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead className="font-semibold">Name</TableHead>
+                  <TableHead className="font-semibold">
+                    Cycle Time (s)
+                  </TableHead>
+                  <TableHead className="font-semibold">Loading (s)</TableHead>
+                  <TableHead className="font-semibold">Unloading (s)</TableHead>
+                  <TableHead className="font-semibold">Pcs/Cycle</TableHead>
+                  <TableHead className="text-right font-semibold">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {products.map((product) => (
+                  <TableRow
+                    key={String(product.id)}
+                    className="hover:bg-accent/30"
+                  >
+                    <TableCell className="font-medium">
+                      {product.name}
+                    </TableCell>
+                    <TableCell>{String(product.cycleTime)}</TableCell>
+                    <TableCell>{String(product.loadingTime)}</TableCell>
+                    <TableCell>{String(product.unloadingTime)}</TableCell>
+                    <TableCell>{String(product.piecesPerCycle)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEdit(product)}
+                          className="hover:bg-accent hover:text-accent-foreground"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteConfirm(product)}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedProducts.map((product) => (
-                    <TableRow key={product.id.toString()}>
-                      <TableCell className="font-medium">{product.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{product.id.toString()}</TableCell>
-                      <TableCell>{formatSecondsAsMinutesSeconds(Number(product.loadingTime))}</TableCell>
-                      <TableCell>{formatSecondsAsMinutesSeconds(Number(product.unloadingTime))}</TableCell>
-                      <TableCell>{Number(product.piecesPerCycle)}</TableCell>
-                      <TableCell>{formatSecondsAsMinutesSeconds(Number(product.cycleTime))}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleOpenDialog(product)}
-                            disabled={deleteProduct.isPending || !actor}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(product.id)}
-                            disabled={deleteProduct.isPending || !actor}
-                          >
-                            {deleteProduct.isPending ? (
-                              <Loader2 className="h-4 w-4 animate-spin text-destructive" />
-                            ) : (
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            )}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
 
-      <Dialog open={isDialogOpen} onOpenChange={(open) => {
-        if (!open) handleCloseDialog();
-      }}>
+      {/* Add/Edit Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingProduct ? 'Edit Product' : 'Add Product'}</DialogTitle>
+            <DialogTitle className="text-primary">
+              {editingProduct ? "Edit Product" : "Add Product"}
+            </DialogTitle>
             <DialogDescription>
               {editingProduct
-                ? 'Update the product details below.'
-                : 'Enter the product details below.'}
+                ? "Update product details."
+                : "Enter details for the new product."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Product Name</Label>
+              <Label>Name *</Label>
               <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Enter product name"
-                disabled={isSaving}
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="cycleTime">Cycle Time (seconds)</Label>
-              <Input
-                id="cycleTime"
-                type="number"
-                min="0"
-                value={formData.cycleTime}
-                onChange={(e) => setFormData({ ...formData, cycleTime: e.target.value })}
-                placeholder="0"
-                disabled={isSaving}
-              />
-              <p className="text-xs text-muted-foreground">
-                Standard cycle time in seconds (e.g., 90 for 1m 30s)
-              </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Cycle Time (s)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={form.cycleTime}
+                  onChange={(e) =>
+                    setForm({ ...form, cycleTime: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Pieces/Cycle</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={form.piecesPerCycle}
+                  onChange={(e) =>
+                    setForm({ ...form, piecesPerCycle: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Loading Time (s)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={form.loadingTime}
+                  onChange={(e) =>
+                    setForm({ ...form, loadingTime: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Unloading Time (s)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={form.unloadingTime}
+                  onChange={(e) =>
+                    setForm({ ...form, unloadingTime: e.target.value })
+                  }
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="loadingTime">Loading Time (seconds)</Label>
-              <Input
-                id="loadingTime"
-                type="number"
-                min="0"
-                value={formData.loadingTime}
-                onChange={(e) => setFormData({ ...formData, loadingTime: e.target.value })}
-                placeholder="0"
-                disabled={isSaving}
-              />
-              <p className="text-xs text-muted-foreground">
-                Enter time in seconds (e.g., 90 for 1m 30s)
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="unloadingTime">Unloading Time (seconds)</Label>
-              <Input
-                id="unloadingTime"
-                type="number"
-                min="0"
-                value={formData.unloadingTime}
-                onChange={(e) => setFormData({ ...formData, unloadingTime: e.target.value })}
-                placeholder="0"
-                disabled={isSaving}
-              />
-              <p className="text-xs text-muted-foreground">
-                Enter time in seconds (e.g., 90 for 1m 30s)
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="piecesPerCycle">Pieces per Cycle</Label>
-              <Input
-                id="piecesPerCycle"
-                type="number"
-                min="1"
-                value={formData.piecesPerCycle}
-                onChange={(e) => setFormData({ ...formData, piecesPerCycle: e.target.value })}
-                placeholder="1"
-                disabled={isSaving}
-              />
-              <p className="text-xs text-muted-foreground">
-                Number of pieces produced in each machine cycle
-              </p>
-            </div>
-          </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isMutating || !form.name.trim()}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                {isMutating && (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                )}
+                {editingProduct ? "Update" : "Add"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog
+        open={!!deleteConfirm}
+        onOpenChange={(open) => !open && setDeleteConfirm(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Product</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{deleteConfirm?.name}"? This
+              action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={handleCloseDialog} disabled={isSaving}>
+            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>
               Cancel
             </Button>
             <Button
-              onClick={handleSave}
-              disabled={!formData.name.trim() || isSaving}
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteProduct.isPending}
             >
-              {isSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Saving...
-                </>
-              ) : (
-                'Save'
+              {deleteProduct.isPending && (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
               )}
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </Card>
   );
 }

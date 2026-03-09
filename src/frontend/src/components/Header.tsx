@@ -1,33 +1,61 @@
-import { Button } from '@/components/ui/button';
-import { Moon, Sun } from 'lucide-react';
-import { useTheme } from 'next-themes';
+import { Button } from "@/components/ui/button";
+import { Factory, Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
+import React from "react";
 
-export default function Header() {
+interface HeaderProps {
+  activeTab: "data-entry" | "admin";
+  onTabChange: (tab: "data-entry" | "admin") => void;
+}
+
+export default function Header({ activeTab, onTabChange }: HeaderProps) {
   const { theme, setTheme } = useTheme();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4 max-w-7xl">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 text-primary-foreground font-bold text-lg shadow-md">
-            PM
-          </div>
-          <div>
-            <h1 className="text-lg font-bold leading-none">Production Manager</h1>
-            <p className="text-xs text-muted-foreground">Track & Manage Production</p>
-          </div>
+    <header className="sticky top-0 z-50 border-b border-border bg-primary shadow-md">
+      <div className="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2 shrink-0">
+          <Factory className="h-6 w-6 text-primary-foreground" />
+          <span className="font-bold text-lg text-primary-foreground hidden sm:block">
+            ProdManager
+          </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <nav className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onTabChange("data-entry")}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
+              activeTab === "data-entry"
+                ? "bg-primary-foreground text-primary shadow"
+                : "text-primary-foreground/80 hover:text-primary-foreground hover:bg-white/10"
+            }`}
+          >
+            Data Entry
+          </button>
+          <button
+            type="button"
+            onClick={() => onTabChange("admin")}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
+              activeTab === "admin"
+                ? "bg-primary-foreground text-primary shadow"
+                : "text-primary-foreground/80 hover:text-primary-foreground hover:bg-white/10"
+            }`}
+          >
+            Admin
+          </button>
+        </nav>
+
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="h-9 w-9"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            aria-label="Toggle theme"
+            className="text-primary-foreground hover:bg-white/10 hover:text-primary-foreground"
           >
             <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
             <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-            <span className="sr-only">Toggle theme</span>
           </Button>
         </div>
       </div>

@@ -1,16 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -18,276 +7,325 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Loader2, Users, ArrowUpDown } from 'lucide-react';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
-  useGetAllOperators,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import type React from "react";
+import { useEffect, useState } from "react";
+import type { Operator } from "../../backend";
+import {
   useAddOperator,
-  useUpdateOperator,
   useDeleteOperator,
-} from '../../hooks/useQueries';
-import { useActor } from '../../hooks/useActor';
-import type { Operator, OperatorId } from '../../backend';
-import { toast } from 'sonner';
-import MasterDataLoadError from '../MasterDataLoadError';
-import { normalizeBackendError } from '../../utils/backendError';
+  useGetAllOperators,
+  useUpdateOperator,
+} from "../../hooks/useQueries";
+import { getOperatorRate, saveOperatorRate } from "../../utils/operatorRates";
+import LoadingPanel from "../LoadingPanel";
+import MasterDataLoadError from "../MasterDataLoadError";
 
-type SortField = 'name' | 'id';
+const PENDING_RATE_KEY = "prodmgr_pending_rate";
+
+function getPendingRates(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(PENDING_RATE_KEY) || "{}") as Record<
+      string,
+      number
+    >;
+  } catch {
+    return {};
+  }
+}
+
+function clearPendingRate(name: string) {
+  try {
+    const pending = getPendingRates();
+    delete pending[name];
+    localStorage.setItem(PENDING_RATE_KEY, JSON.stringify(pending));
+  } catch {
+    /* ignore */
+  }
+}
 
 export default function OperatorsManager() {
-  const { actor } = useActor();
-  const [sortBy, setSortBy] = useState<SortField>('name');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const { data: operators = [], isLoading, isFetched, error, refetch } = useGetAllOperators('name');
+  const {
+    data: operators = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useGetAllOperators();
   const addOperator = useAddOperator();
   const updateOperator = useUpdateOperator();
   const deleteOperator = useDeleteOperator();
 
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [editingOperator, setEditingOperator] = useState<Operator | null>(null);
-  const [operatorName, setOperatorName] = useState('');
+  const [name, setName] = useState("");
+  const [ratePerHour, setRatePerHour] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<Operator | null>(null);
 
-  const handleSort = (field: SortField) => {
-    if (sortBy === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(field);
-      setSortOrder('asc');
-    }
-  };
-
-  const sortedOperators = useMemo(() => {
-    let sorted = [...operators];
-    
-    sorted.sort((a, b) => {
-      let comparison = 0;
-      
-      if (sortBy === 'id') {
-        comparison = Number(a.id) - Number(b.id);
-      } else {
-        comparison = a.name.localeCompare(b.name);
+  // When operator list updates, assign any pending rates by name
+  useEffect(() => {
+    const pending = getPendingRates();
+    const keys = Object.keys(pending);
+    if (keys.length === 0) return;
+    for (const operator of operators) {
+      if (pending[operator.name] !== undefined) {
+        saveOperatorRate(String(operator.id), pending[operator.name]);
+        clearPendingRate(operator.name);
       }
-      
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
-    
-    return sorted;
-  }, [operators, sortBy, sortOrder]);
-
-  const handleOpenDialog = (operator?: Operator) => {
-    if (!actor) {
-      toast.error('Please wait for the system to initialize');
-      return;
     }
-    
-    if (operator) {
-      setEditingOperator(operator);
-      setOperatorName(operator.name);
-    } else {
-      setEditingOperator(null);
-      setOperatorName('');
-    }
-    setIsDialogOpen(true);
-  };
+  }, [operators]);
 
-  const handleCloseDialog = () => {
-    setIsDialogOpen(false);
+  const openAdd = () => {
     setEditingOperator(null);
-    setOperatorName('');
+    setName("");
+    setRatePerHour("");
+    setDialogOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!actor) {
-      toast.error('Please wait for the system to initialize');
-      return;
-    }
-
-    const trimmedName = operatorName.trim();
-    if (!trimmedName) {
-      toast.error('Operator name is required');
-      return;
-    }
-
-    try {
-      if (editingOperator) {
-        await updateOperator.mutateAsync({
-          id: editingOperator.id,
-          name: trimmedName,
-        });
-      } else {
-        await addOperator.mutateAsync(trimmedName);
-      }
-      handleCloseDialog();
-    } catch (error) {
-      // Error is already handled by mutation hooks with normalized messages
-      console.error('Save error:', error);
-    }
+  const openEdit = (operator: Operator) => {
+    setEditingOperator(operator);
+    setName(operator.name);
+    const existing = getOperatorRate(String(operator.id));
+    setRatePerHour(existing > 0 ? String(existing) : "");
+    setDialogOpen(true);
   };
 
-  const handleDelete = async (id: OperatorId) => {
-    if (!actor) {
-      toast.error('Please wait for the system to initialize');
-      return;
-    }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
 
-    if (confirm('Are you sure you want to delete this operator?')) {
-      try {
-        await deleteOperator.mutateAsync(id);
-      } catch (error) {
-        console.error('Delete error:', error);
+    const rate = Number.parseFloat(ratePerHour) || 0;
+
+    if (editingOperator) {
+      await updateOperator.mutateAsync({
+        id: editingOperator.id,
+        name: name.trim(),
+      });
+      saveOperatorRate(String(editingOperator.id), rate);
+    } else {
+      // addOperator returns void, so we store a pending rate by name
+      await addOperator.mutateAsync({ name: name.trim() });
+      if (rate > 0) {
+        try {
+          const pending = getPendingRates();
+          pending[name.trim()] = rate;
+          localStorage.setItem(PENDING_RATE_KEY, JSON.stringify(pending));
+        } catch {
+          /* ignore */
+        }
       }
     }
+    setDialogOpen(false);
   };
 
-  const isSaving = addOperator.isPending || updateOperator.isPending;
-  const showInitialLoading = isLoading && !isFetched;
-  const hasError = error && isFetched;
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    await deleteOperator.mutateAsync(deleteConfirm.id);
+    setDeleteConfirm(null);
+  };
+
+  const isMutating = addOperator.isPending || updateOperator.isPending;
+
+  if (isLoading) return <LoadingPanel message="Loading operators..." />;
+  if (isError)
+    return (
+      <MasterDataLoadError
+        message="Failed to load operators."
+        onRetry={refetch}
+      />
+    );
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Operators</CardTitle>
-              <CardDescription>Manage production operators</CardDescription>
-            </div>
-            <Button onClick={() => handleOpenDialog()} className="gap-2" disabled={isSaving || !actor}>
-              <Plus className="h-4 w-4" />
-              Add Operator
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {showInitialLoading ? (
-            <div className="text-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-3" />
-              <p className="text-muted-foreground">Loading operators...</p>
-            </div>
-          ) : hasError ? (
-            <MasterDataLoadError 
-              title="Failed to load operators"
-              message={normalizeBackendError(error)}
-              onRetry={() => refetch()}
-            />
-          ) : operators.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="font-medium">No operators yet</p>
-              <p className="text-sm">Add your first operator to get started.</p>
-            </div>
-          ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="-ml-3 h-8 data-[state=open]:bg-accent"
-                        onClick={() => handleSort('name')}
-                      >
-                        Operator Name
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
-                      </Button>
-                    </TableHead>
-                    <TableHead>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="-ml-3 h-8 data-[state=open]:bg-accent"
-                        onClick={() => handleSort('id')}
-                      >
-                        ID
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
-                      </Button>
-                    </TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+    <Card className="border-border shadow-sm">
+      <CardHeader className="flex flex-row items-center justify-between bg-primary/5 rounded-t-lg border-b border-border">
+        <CardTitle className="text-primary">Operators</CardTitle>
+        <Button
+          onClick={openAdd}
+          size="sm"
+          className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
+          data-ocid="operators.open_modal_button"
+        >
+          <Plus className="h-4 w-4" />
+          Add Operator
+        </Button>
+      </CardHeader>
+      <CardContent className="pt-4">
+        {operators.length === 0 ? (
+          <p
+            className="text-center text-muted-foreground py-8"
+            data-ocid="operators.empty_state"
+          >
+            No operators yet. Add your first operator.
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                <TableHead className="font-semibold">ID</TableHead>
+                <TableHead className="font-semibold">Name</TableHead>
+                <TableHead className="font-semibold">Rate/Hour (₹)</TableHead>
+                <TableHead className="text-right font-semibold">
+                  Actions
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {operators.map((operator, idx) => {
+                const rate = getOperatorRate(String(operator.id));
+                return (
+                  <TableRow
+                    key={String(operator.id)}
+                    className="hover:bg-accent/30"
+                    data-ocid={`operators.item.${idx + 1}`}
+                  >
+                    <TableCell className="text-muted-foreground">
+                      {String(operator.id)}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {operator.name}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {rate > 0 ? `₹${rate.toLocaleString("en-IN")}` : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEdit(operator)}
+                          className="hover:bg-accent hover:text-accent-foreground"
+                          data-ocid={`operators.edit_button.${idx + 1}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteConfirm(operator)}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          data-ocid={`operators.delete_button.${idx + 1}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedOperators.map((operator) => (
-                    <TableRow key={operator.id.toString()}>
-                      <TableCell className="font-medium">{operator.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{operator.id.toString()}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleOpenDialog(operator)}
-                            disabled={deleteOperator.isPending || !actor}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(operator.id)}
-                            disabled={deleteOperator.isPending || !actor}
-                          >
-                            {deleteOperator.isPending ? (
-                              <Loader2 className="h-4 w-4 animate-spin text-destructive" />
-                            ) : (
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            )}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
 
-      <Dialog open={isDialogOpen} onOpenChange={(open) => {
-        if (!open) handleCloseDialog();
-      }}>
-        <DialogContent>
+      {/* Add / Edit Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent data-ocid="operators.dialog">
           <DialogHeader>
-            <DialogTitle>{editingOperator ? 'Edit Operator' : 'Add Operator'}</DialogTitle>
+            <DialogTitle className="text-primary">
+              {editingOperator ? "Edit Operator" : "Add Operator"}
+            </DialogTitle>
             <DialogDescription>
               {editingOperator
-                ? 'Update the operator name below.'
-                : 'Enter the operator name below.'}
+                ? "Update operator details."
+                : "Enter details for the new operator."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="operatorName">Operator Name</Label>
+              <Label>Name *</Label>
               <Input
-                id="operatorName"
-                value={operatorName}
-                onChange={(e) => setOperatorName(e.target.value)}
-                placeholder="Enter operator name"
-                disabled={isSaving}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                autoFocus
+                data-ocid="operators.name.input"
               />
             </div>
-          </div>
+            <div className="space-y-2">
+              <Label>Rate per Hour (₹)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="e.g. 150"
+                value={ratePerHour}
+                onChange={(e) => setRatePerHour(e.target.value)}
+                data-ocid="operators.rate.input"
+              />
+              <p className="text-xs text-muted-foreground">
+                Used to calculate salary in operator-wise reports.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+                data-ocid="operators.cancel_button"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isMutating || !name.trim()}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                data-ocid="operators.save_button"
+              >
+                {isMutating && (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                )}
+                {editingOperator ? "Update" : "Add"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog
+        open={!!deleteConfirm}
+        onOpenChange={(open) => !open && setDeleteConfirm(null)}
+      >
+        <DialogContent data-ocid="operators.delete_dialog">
+          <DialogHeader>
+            <DialogTitle>Delete Operator</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete &quot;{deleteConfirm?.name}&quot;?
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={handleCloseDialog} disabled={isSaving}>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteConfirm(null)}
+              data-ocid="operators.cancel_button"
+            >
               Cancel
             </Button>
             <Button
-              onClick={handleSave}
-              disabled={!operatorName.trim() || isSaving}
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteOperator.isPending}
+              data-ocid="operators.confirm_button"
             >
-              {isSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Saving...
-                </>
-              ) : (
-                'Save'
+              {deleteOperator.isPending && (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
               )}
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </Card>
   );
 }

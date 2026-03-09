@@ -1,755 +1,723 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Calendar, Clock, Save, Package, Loader2, AlertCircle, UserCheck } from 'lucide-react';
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  RotateCcw,
+  Send,
+} from "lucide-react";
+import type React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import AnalogClockPicker from "../components/AnalogClockPicker";
+import LoadingPanel from "../components/LoadingPanel";
+import MasterDataLoadError from "../components/MasterDataLoadError";
+import {
+  useAddProductionEntry,
   useGetAllMachines,
   useGetAllOperators,
   useGetAllProducts,
-  useAddProductionEntry,
-} from '../hooks/useQueries';
-import type { MachineId, OperatorId, ProductId } from '../backend';
-import { 
-  calculateTotalOperatorHours, 
-  formatTimeInterval, 
-  calculateAdjustedDutyTimeSeconds,
-  convertSecondsToTimeInterval 
-} from '../utils/operatorHours';
-import { formatSecondsAsMinutesSeconds } from '../utils/timeFormat';
-import MasterDataLoadError from '../components/MasterDataLoadError';
-import { normalizeBackendError } from '../utils/backendError';
-import { useActor } from '../hooks/useActor';
-import { toast } from 'sonner';
+} from "../hooks/useQueries";
+import {
+  calculateDutyTime,
+  calculateOperatorHours,
+  calculateTenHourTarget,
+  calculateTwelveHourTarget,
+} from "../utils/operatorHours";
+import { saveRejection } from "../utils/rejectionStore";
+import { formatHMS } from "../utils/timeFormat";
+
+interface FormState {
+  machineId: string;
+  operatorId: string;
+  productId: string;
+  cycleTimeMinutes: string;
+  cycleTimeSeconds: string;
+  quantityProduced: string;
+  rejectionCount: string;
+  downtimeReason: string;
+  downtimeMinutes: string;
+  downtimeSeconds: string;
+  punchDate: string;
+  punchInTime: string;
+  punchOutTime: string;
+}
+
+const DRAFT_KEY = "prodmanager_draft";
+
+function todayDateString(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = (now.getMonth() + 1).toString().padStart(2, "0");
+  const d = now.getDate().toString().padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+const emptyForm: FormState = {
+  machineId: "",
+  operatorId: "",
+  productId: "",
+  cycleTimeMinutes: "0",
+  cycleTimeSeconds: "0",
+  quantityProduced: "0",
+  rejectionCount: "0",
+  downtimeReason: "",
+  downtimeMinutes: "0",
+  downtimeSeconds: "0",
+  punchDate: todayDateString(),
+  punchInTime: "",
+  punchOutTime: "",
+};
+
+function loadDraft(): FormState {
+  try {
+    const saved = localStorage.getItem(DRAFT_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as Partial<FormState>;
+      // Always refresh punchDate to today if not explicitly set
+      return {
+        ...emptyForm,
+        ...parsed,
+        // If no date saved, use today
+        punchDate: parsed.punchDate || todayDateString(),
+      };
+    }
+  } catch {}
+  return emptyForm;
+}
+
+function saveDraft(form: FormState) {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(form));
+  } catch {}
+}
+
+function clearDraft() {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {}
+}
+
+/** Combine a date string (YYYY-MM-DD) and time string (HH:MM) into a timestamp in ms */
+function combineDateAndTime(dateStr: string, timeStr: string): number {
+  if (!dateStr || !timeStr) return 0;
+  const dt = new Date(`${dateStr}T${timeStr}:00`);
+  return dt.getTime();
+}
 
 export default function DataEntryPage() {
-  const { actor, isFetching: actorFetching } = useActor();
-  const { data: machines = [], isLoading: machinesLoading, isFetched: machinesFetched, error: machinesError, refetch: refetchMachines } = useGetAllMachines('id');
-  const { data: operators = [], isLoading: operatorsLoading, isFetched: operatorsFetched, error: operatorsError, refetch: refetchOperators } = useGetAllOperators('id');
-  const { data: products = [], isLoading: productsLoading, isFetched: productsFetched, error: productsError, refetch: refetchProducts } = useGetAllProducts('id');
+  const [form, setForm] = useState<FormState>(loadDraft);
+  const [draftSaved, setDraftSaved] = useState(false);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const {
+    data: products = [],
+    isLoading: productsLoading,
+    isError: productsError,
+    isFetching: productsFetching,
+    refetch: refetchProducts,
+  } = useGetAllProducts();
+  const {
+    data: machines = [],
+    isLoading: machinesLoading,
+    isError: machinesError,
+    isFetching: machinesFetching,
+    refetch: refetchMachines,
+  } = useGetAllMachines();
+  const {
+    data: operators = [],
+    isLoading: operatorsLoading,
+    isError: operatorsError,
+    isFetching: operatorsFetching,
+    refetch: refetchOperators,
+  } = useGetAllOperators();
   const addEntry = useAddProductionEntry();
 
-  const [entryDateTime, setEntryDateTime] = useState<string>('');
-  const [selectedMachine, setSelectedMachine] = useState<string>('');
-  const [selectedOperator, setSelectedOperator] = useState<string>('');
-  const [selectedProduct, setSelectedProduct] = useState<string>('');
-  const [minutes, setMinutes] = useState<string>('0');
-  const [seconds, setSeconds] = useState<string>('0');
-  const [quantityProduced, setQuantityProduced] = useState<string>('1');
-  const [downtimeReason, setDowntimeReason] = useState<string>('');
-  const [downtimeMinutes, setDowntimeMinutes] = useState<string>('0');
-  const [downtimeSeconds, setDowntimeSeconds] = useState<string>('0');
-  const [punchInTime, setPunchInTime] = useState<string>('');
-  const [punchOutTime, setPunchOutTime] = useState<string>('');
-
-  // Auto-fill with current date/time on component mount
-  useEffect(() => {
-    const now = new Date();
-    // Format as datetime-local input value (YYYY-MM-DDTHH:mm)
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const mins = String(now.getMinutes()).padStart(2, '0');
-    setEntryDateTime(`${year}-${month}-${day}T${hours}:${mins}`);
+  // Auto-save draft to localStorage with debounce
+  const triggerDraftSave = useCallback((newForm: FormState) => {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      saveDraft(newForm);
+      setDraftSaved(true);
+      setTimeout(() => setDraftSaved(false), 2000);
+    }, 800);
   }, []);
 
-  const selectedProductData = products.find((p) => p.id.toString() === selectedProduct);
-
-  // Calculate number of parts produced in real-time
-  const numberOfPartsProduced = selectedProductData 
-    ? Number(selectedProductData.piecesPerCycle) * (parseInt(quantityProduced) || 0)
-    : 0;
-
-  // Calculate form cycle time in seconds
-  const formCycleTimeSeconds = (parseInt(minutes) || 0) * 60 + (parseInt(seconds) || 0);
-
-  // Calculate 10 Hour Target using formula: 34200 / (cycle time + loading + unloading) × 0.95
-  const tenHourTarget = selectedProductData && formCycleTimeSeconds > 0
-    ? Math.round((34200 / (formCycleTimeSeconds + Number(selectedProductData.loadingTime) + Number(selectedProductData.unloadingTime))) * 0.95)
-    : 0;
-
-  // Calculate 12 Hour Target using formula: 39600 / (cycle time + loading + unloading) × 0.95
-  const twelveHourTarget = selectedProductData && formCycleTimeSeconds > 0
-    ? Math.round((39600 / (formCycleTimeSeconds + Number(selectedProductData.loadingTime) + Number(selectedProductData.unloadingTime))) * 0.95)
-    : 0;
-
-  // Calculate cycle time for 10-hour target using formula: (10 ÷ 10 Hour Target) × 60
-  // Result is in minutes, then converted to seconds for display
-  const cycleTimeForTenHourTarget = tenHourTarget > 0
-    ? ((10 / tenHourTarget) * 60) * 60  // hours to minutes (* 60), then minutes to seconds (* 60)
-    : 0;
-
-  // Calculate cycle time for 12-hour target using formula: (12 ÷ 12 Hour Target) × 60
-  // Result is in minutes, then converted to seconds for display
-  const cycleTimeForTwelveHourTarget = twelveHourTarget > 0
-    ? ((12 / twelveHourTarget) * 60) * 60  // hours to minutes (* 60), then minutes to seconds (* 60)
-    : 0;
-
-  // Calculate adjusted duty time (with 30-minute deduction when raw duration < 12 hours)
-  const adjustedDutyTimeSeconds = calculateAdjustedDutyTimeSeconds(punchInTime, punchOutTime);
-  const dutyTime = convertSecondsToTimeInterval(adjustedDutyTimeSeconds);
-
-  const calculateTotalRunTime = () => {
-    if (!selectedProductData) return { hours: 0, minutes: 0, seconds: 0 };
-    const cycleTimeSeconds = formCycleTimeSeconds;
-    const downtimeTimeSeconds = (parseInt(downtimeMinutes) || 0) * 60 + (parseInt(downtimeSeconds) || 0);
-    const quantity = parseInt(quantityProduced) || 1;
-    const loadingTime = Number(selectedProductData.loadingTime);
-    const unloadingTime = Number(selectedProductData.unloadingTime);
-    
-    // Formula: (loadingTime + unloadingTime) * quantity + (cycleTime * quantity) + downtimeTime
-    const totalSeconds = (loadingTime + unloadingTime) * quantity + (cycleTimeSeconds * quantity) + downtimeTimeSeconds;
-    
-    const hours = Math.floor(totalSeconds / 3600);
-    const mins = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-    
-    return { hours, minutes: mins, seconds: secs };
+  const updateField = (field: keyof FormState, value: string) => {
+    setForm((prev) => {
+      const next = { ...prev, [field]: value };
+      triggerDraftSave(next);
+      return next;
+    });
   };
 
-  const totalRunTime = calculateTotalRunTime();
+  useEffect(() => {
+    return () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    };
+  }, []);
 
-  // Calculate total operator hours using new formula based on adjusted duty time
-  const quantity = parseInt(quantityProduced) || 0;
-  const totalOperatorHours = calculateTotalOperatorHours({
-    dutyTimeInSeconds: adjustedDutyTimeSeconds,
-    quantityProduced: quantity,
+  // Derived calculations
+  const selectedProduct = products.find((p) => String(p.id) === form.productId);
+  const cycleTimeSec =
+    (Number.parseInt(form.cycleTimeMinutes) || 0) * 60 +
+    (Number.parseInt(form.cycleTimeSeconds) || 0);
+  const downtimeSec =
+    (Number.parseInt(form.downtimeMinutes) || 0) * 60 +
+    (Number.parseInt(form.downtimeSeconds) || 0);
+  const qty = Number.parseInt(form.quantityProduced) || 0;
+  const rejCount = Number.parseInt(form.rejectionCount) || 0;
+
+  const tenHourTarget = selectedProduct
+    ? calculateTenHourTarget(
+        cycleTimeSec,
+        Number(selectedProduct.loadingTime),
+        Number(selectedProduct.unloadingTime),
+      )
+    : 0;
+  const twelveHourTarget = selectedProduct
+    ? calculateTwelveHourTarget(
+        cycleTimeSec,
+        Number(selectedProduct.loadingTime),
+        Number(selectedProduct.unloadingTime),
+      )
+    : 0;
+
+  const punchInMs = combineDateAndTime(form.punchDate, form.punchInTime);
+  const punchOutMs = combineDateAndTime(form.punchDate, form.punchOutTime);
+  const dutyTimeSec =
+    punchInMs && punchOutMs ? calculateDutyTime(punchInMs, punchOutMs) : 0;
+
+  const operatorHours = calculateOperatorHours(
+    dutyTimeSec,
+    qty,
     tenHourTarget,
     twelveHourTarget,
-  });
+    downtimeSec,
+  );
 
-  const formatTimeHoursMinutesSeconds = (hours: number, minutes: number, seconds: number) => {
-    const parts: string[] = [];
-    if (hours > 0) parts.push(`${hours}h`);
-    if (minutes > 0) parts.push(`${minutes}m`);
-    if (seconds > 0) parts.push(`${seconds}s`);
-    return parts.length > 0 ? parts.join(' ') : '0s';
+  const dutyHours = Math.floor(dutyTimeSec / 3600);
+  const dutyMinutes = Math.floor((dutyTimeSec % 3600) / 60);
+  const dutySeconds = dutyTimeSec % 60;
+
+  const handleReset = () => {
+    setForm({ ...emptyForm, punchDate: todayDateString() });
+    clearDraft();
+    toast.info("Form cleared");
   };
 
-  const formatTimeHoursMinutes = (hours: number, minutes: number) => {
-    if (hours === 0) {
-      return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!form.machineId) {
+      toast.error("Please select a machine");
+      return;
     }
-    if (minutes === 0) {
-      return `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+    if (!form.operatorId) {
+      toast.error("Please select an operator");
+      return;
     }
-    return `${hours} ${hours === 1 ? 'hour' : 'hours'} ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+    if (!form.productId) {
+      toast.error("Please select a product");
+      return;
+    }
+    if (!form.punchDate) {
+      toast.error("Please select a date");
+      return;
+    }
+    if (!form.punchInTime) {
+      toast.error("Please enter punch-in time");
+      return;
+    }
+    if (!form.punchOutTime) {
+      toast.error("Please enter punch-out time");
+      return;
+    }
+    if (punchOutMs <= punchInMs) {
+      toast.error("Punch-out must be after punch-in");
+      return;
+    }
+
+    const punchInNs = BigInt(Math.floor(punchInMs * 1_000_000));
+    const punchOutNs = BigInt(Math.floor(punchOutMs * 1_000_000));
+    const nowNs = BigInt(Date.now()) * BigInt(1_000_000);
+
+    await addEntry.mutateAsync({
+      machineId: BigInt(form.machineId),
+      operatorId: BigInt(form.operatorId),
+      productId: BigInt(form.productId),
+      cycleTime: {
+        minutes: BigInt(Number.parseInt(form.cycleTimeMinutes) || 0),
+        seconds: BigInt(Number.parseInt(form.cycleTimeSeconds) || 0),
+      },
+      quantityProduced: BigInt(qty),
+      downtimeReason: form.downtimeReason,
+      downtimeTime: {
+        minutes: BigInt(Number.parseInt(form.downtimeMinutes) || 0),
+        seconds: BigInt(Number.parseInt(form.downtimeSeconds) || 0),
+      },
+      punchIn: punchInNs,
+      punchOut: punchOutNs,
+      timestamp: nowNs,
+    });
+
+    // Save rejection count separately in localStorage keyed by timestamp
+    if (rejCount > 0) {
+      saveRejection(String(nowNs), rejCount);
+    }
+
+    setForm({ ...emptyForm, punchDate: todayDateString() });
+    clearDraft();
   };
 
-  const handleSave = async () => {
-    // Validate actor is available
-    if (!actor) {
-      toast.error('System is still initializing. Please wait a moment and try again.');
-      return;
-    }
+  const isLoading =
+    productsLoading ||
+    machinesLoading ||
+    operatorsLoading ||
+    productsFetching ||
+    machinesFetching ||
+    operatorsFetching;
+  const hasError = productsError || machinesError || operatorsError;
 
-    // Validate required fields
-    if (!selectedMachine) {
-      toast.error('Please select a machine');
-      return;
-    }
-    if (!selectedOperator) {
-      toast.error('Please select an operator');
-      return;
-    }
-    if (!selectedProduct) {
-      toast.error('Please select a product');
-      return;
-    }
-    if (!entryDateTime) {
-      toast.error('Please enter a date and time');
-      return;
-    }
-    if (!punchInTime) {
-      toast.error('Please enter punch in time');
-      return;
-    }
-    if (!punchOutTime) {
-      toast.error('Please enter punch out time');
-      return;
-    }
+  // Show loading spinner while data is being fetched (including retries)
+  if (isLoading && !hasError) {
+    return <LoadingPanel message="Loading master data..." />;
+  }
 
-    const quantity = parseInt(quantityProduced) || 1;
-    if (quantity < 1) {
-      toast.error('Quantity must be at least 1');
-      return;
-    }
-
-    // Validate punch times
-    if (punchOutTime <= punchInTime) {
-      toast.error('Punch out time must be after punch in time');
-      return;
-    }
-
-    try {
-      // Convert datetime-local input to nanosecond timestamp
-      const dateObj = new Date(entryDateTime);
-      const timestampMs = dateObj.getTime();
-      const timestampNs = BigInt(timestampMs) * BigInt(1_000_000); // Convert ms to ns
-
-      // Convert punch in/out times to nanosecond timestamps
-      const today = new Date().toISOString().split('T')[0];
-      const punchInDate = new Date(`${today}T${punchInTime}`);
-      const punchOutDate = new Date(`${today}T${punchOutTime}`);
-      const punchInNs = BigInt(punchInDate.getTime()) * BigInt(1_000_000);
-      const punchOutNs = BigInt(punchOutDate.getTime()) * BigInt(1_000_000);
-
-      await addEntry.mutateAsync({
-        machineId: BigInt(selectedMachine) as MachineId,
-        operatorId: BigInt(selectedOperator) as OperatorId,
-        productId: BigInt(selectedProduct) as ProductId,
-        cycleTime: {
-          minutes: BigInt(parseInt(minutes) || 0),
-          seconds: BigInt(parseInt(seconds) || 0),
-        },
-        quantityProduced: BigInt(quantity),
-        downtimeReason: downtimeReason,
-        downtimeTime: {
-          minutes: BigInt(parseInt(downtimeMinutes) || 0),
-          seconds: BigInt(parseInt(downtimeSeconds) || 0),
-        },
-        punchIn: punchInNs,
-        punchOut: punchOutNs,
-        timestamp: timestampNs,
-      });
-
-      // Reset form with new current date/time
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const hours = String(now.getHours()).padStart(2, '0');
-      const mins = String(now.getMinutes()).padStart(2, '0');
-      setEntryDateTime(`${year}-${month}-${day}T${hours}:${mins}`);
-      setSelectedMachine('');
-      setSelectedOperator('');
-      setSelectedProduct('');
-      setMinutes('0');
-      setSeconds('0');
-      setQuantityProduced('1');
-      setDowntimeReason('');
-      setDowntimeMinutes('0');
-      setDowntimeSeconds('0');
-      setPunchInTime('');
-      setPunchOutTime('');
-    } catch (error) {
-      // Error is already handled by the mutation's onError callback
-      console.error('Failed to save entry:', error);
-    }
-  };
-
-  const isFormValid = selectedMachine && selectedOperator && selectedProduct && entryDateTime && 
-                      punchInTime && punchOutTime && parseInt(quantityProduced) >= 1;
-  
-  // Show loading only on initial load when no cached data exists
-  const isInitialLoading = (machinesLoading && !machinesFetched) || 
-                           (operatorsLoading && !operatorsFetched) || 
-                           (productsLoading && !productsFetched) ||
-                           actorFetching;
-
-  if (isInitialLoading) {
+  // Only show error after all retries have been exhausted
+  if (hasError && !isLoading) {
     return (
-      <div className="max-w-2xl mx-auto">
-        <Card className="shadow-lg">
-          <CardContent className="pt-6 flex items-center justify-center py-12">
-            <div className="text-center space-y-3">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-              <p className="text-muted-foreground">Loading form data...</p>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="container mx-auto px-4 py-6 max-w-3xl">
+        <MasterDataLoadError
+          message="Failed to load master data. Please check your connection and try again."
+          onRetry={() => {
+            refetchProducts();
+            refetchMachines();
+            refetchOperators();
+          }}
+        />
       </div>
     );
   }
 
-  // Determine explanation text for Total Operator Hours
-  const useTenHourFormula = adjustedDutyTimeSeconds <= (10 * 3600);
-  let operatorHoursExplanation = '';
-  
-  if (useTenHourFormula) {
-    operatorHoursExplanation = `Adjusted Duty Time ≤ 10h: Formula = (${quantity} ÷ ${tenHourTarget}) × 10`;
-  } else {
-    operatorHoursExplanation = `Adjusted Duty Time > 10h: Formula = (${quantity} ÷ ${twelveHourTarget}) × 12`;
-  }
-
-  // Determine duty time display value
-  const getDutyTimeDisplay = () => {
-    if (!punchInTime || !punchOutTime) {
-      return 'Enter punch times';
-    }
-    if (punchOutTime <= punchInTime) {
-      return 'Invalid time range';
-    }
-    return formatTimeHoursMinutes(dutyTime.hours, dutyTime.minutes);
-  };
-
-  const isDutyTimeInvalid = (punchInTime && punchOutTime && punchOutTime <= punchInTime);
-
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <Card className="shadow-lg">
-        <CardHeader className="bg-gradient-to-r from-primary/10 to-primary/5">
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
+    <div className="container mx-auto px-4 py-6 max-w-3xl">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">
             Production Data Entry
-          </CardTitle>
-          <CardDescription>Record production cycle information</CardDescription>
-        </CardHeader>
-        <CardContent className="pt-6 space-y-6">
-          {/* Error states for master data */}
-          {machinesError && machinesFetched && (
-            <MasterDataLoadError 
-              title="Failed to load machines"
-              message={normalizeBackendError(machinesError)}
-              onRetry={() => refetchMachines()}
-            />
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Record production run details
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {draftSaved && (
+            <Badge
+              variant="secondary"
+              className="gap-1 bg-secondary text-secondary-foreground"
+            >
+              <CheckCircle2 className="h-3 w-3" />
+              Draft saved
+            </Badge>
           )}
-          {operatorsError && operatorsFetched && (
-            <MasterDataLoadError 
-              title="Failed to load operators"
-              message={normalizeBackendError(operatorsError)}
-              onRetry={() => refetchOperators()}
-            />
-          )}
-          {productsError && productsFetched && (
-            <MasterDataLoadError 
-              title="Failed to load products"
-              message={normalizeBackendError(productsError)}
-              onRetry={() => refetchProducts()}
-            />
-          )}
-
-          {/* Date/Time Field */}
-          <div className="space-y-2">
-            <Label htmlFor="entryDateTime" className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Entry Date & Time
-            </Label>
-            <Input
-              id="entryDateTime"
-              type="datetime-local"
-              value={entryDateTime}
-              onChange={(e) => setEntryDateTime(e.target.value)}
-              className="text-lg font-semibold"
-            />
-            <p className="text-xs text-muted-foreground">
-              Auto-filled with current time. Edit to enter a different date/time.
-            </p>
-          </div>
-
-          {/* Machine Selection */}
-          <div className="space-y-2">
-            <Label htmlFor="machine">Machine</Label>
-            <Select value={selectedMachine} onValueChange={setSelectedMachine}>
-              <SelectTrigger id="machine">
-                <SelectValue placeholder="Select a machine" />
-              </SelectTrigger>
-              <SelectContent>
-                {machines.length === 0 ? (
-                  <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                    No machines available. Add machines in Admin tab.
-                  </div>
-                ) : (
-                  machines.map((machine) => (
-                    <SelectItem key={machine.id.toString()} value={machine.id.toString()}>
-                      {machine.name}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Operator Selection */}
-          <div className="space-y-2">
-            <Label htmlFor="operator">Operator</Label>
-            <Select value={selectedOperator} onValueChange={setSelectedOperator}>
-              <SelectTrigger id="operator">
-                <SelectValue placeholder="Select an operator" />
-              </SelectTrigger>
-              <SelectContent>
-                {operators.length === 0 ? (
-                  <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                    No operators available. Add operators in Admin tab.
-                  </div>
-                ) : (
-                  operators.map((operator) => (
-                    <SelectItem key={operator.id.toString()} value={operator.id.toString()}>
-                      {operator.name}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Product Selection */}
-          <div className="space-y-2">
-            <Label htmlFor="product">Product</Label>
-            <Select value={selectedProduct} onValueChange={setSelectedProduct}>
-              <SelectTrigger id="product">
-                <SelectValue placeholder="Select a product" />
-              </SelectTrigger>
-              <SelectContent>
-                {products.length === 0 ? (
-                  <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                    No products available. Add products in Admin tab.
-                  </div>
-                ) : (
-                  products.map((product) => (
-                    <SelectItem key={product.id.toString()} value={product.id.toString()}>
-                      {product.name}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
-            {selectedProductData && (
-              <div className="text-xs text-muted-foreground space-y-1 bg-muted/50 p-3 rounded-md">
-                <p>Loading Time: {formatSecondsAsMinutesSeconds(Number(selectedProductData.loadingTime))}</p>
-                <p>Unloading Time: {formatSecondsAsMinutesSeconds(Number(selectedProductData.unloadingTime))}</p>
-                <p>Pieces per Cycle: {Number(selectedProductData.piecesPerCycle)}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Cycle Time */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Cycle Time
-            </Label>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="minutes" className="text-xs text-muted-foreground">
-                  Minutes
-                </Label>
-                <Input
-                  id="minutes"
-                  type="number"
-                  min="0"
-                  value={minutes}
-                  onChange={(e) => setMinutes(e.target.value)}
-                  className="text-lg font-semibold"
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="seconds" className="text-xs text-muted-foreground">
-                  Seconds
-                </Label>
-                <Input
-                  id="seconds"
-                  type="number"
-                  min="0"
-                  max="59"
-                  value={seconds}
-                  onChange={(e) => setSeconds(e.target.value)}
-                  className="text-lg font-semibold"
-                  placeholder="0"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Quantity Produced */}
-          <div className="space-y-2">
-            <Label htmlFor="quantity" className="flex items-center gap-2">
-              <Package className="h-4 w-4" />
-              Quantity Produced
-            </Label>
-            <Input
-              id="quantity"
-              type="number"
-              min="1"
-              value={quantityProduced}
-              onChange={(e) => {
-                const value = e.target.value;
-                if (value === '' || parseInt(value) >= 1) {
-                  setQuantityProduced(value);
-                }
-              }}
-              className="text-lg font-semibold"
-              placeholder="Enter quantity"
-            />
-            {quantityProduced && parseInt(quantityProduced) < 1 && (
-              <p className="text-xs text-destructive">Quantity must be at least 1</p>
-            )}
-          </div>
-
-          {/* Number of Parts Produced - Read-only, Auto-calculated */}
-          <div className="space-y-2">
-            <Label htmlFor="numberOfParts" className="flex items-center gap-2">
-              <Package className="h-4 w-4" />
-              Number of Parts Produced
-            </Label>
-            <Input
-              id="numberOfParts"
-              type="text"
-              value={numberOfPartsProduced}
-              readOnly
-              className="text-lg font-semibold bg-muted cursor-not-allowed"
-              placeholder="Auto-calculated"
-            />
-            <p className="text-xs text-muted-foreground">
-              Automatically calculated: Pieces per Cycle × Quantity Produced
-            </p>
-          </div>
-
-          {/* 10 Hour Target - Read-only, Auto-calculated */}
-          <div className="space-y-2">
-            <Label htmlFor="tenHourTarget" className="flex items-center gap-2">
-              <Package className="h-4 w-4" />
-              10 Hour Target
-            </Label>
-            <Input
-              id="tenHourTarget"
-              type="text"
-              value={tenHourTarget}
-              readOnly
-              className="text-lg font-semibold bg-muted cursor-not-allowed"
-              placeholder="Auto-calculated"
-            />
-            <p className="text-xs text-muted-foreground">
-              Target for 10-hour shift: 34200 ÷ (cycle time + loading + unloading) × 0.95
-            </p>
-          </div>
-
-          {/* Cycle Time for 10 Hour Target - Read-only, Auto-calculated */}
-          <div className="space-y-2">
-            <Label htmlFor="cycleTimeForTenHourTarget" className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Cycle Time for 10 Hour Target
-            </Label>
-            <Input
-              id="cycleTimeForTenHourTarget"
-              type="text"
-              value={formatSecondsAsMinutesSeconds(cycleTimeForTenHourTarget)}
-              readOnly
-              className="text-lg font-semibold bg-muted cursor-not-allowed"
-              placeholder="Auto-calculated"
-            />
-            <p className="text-xs text-muted-foreground">
-              Formula: (10 ÷ 10 Hour Target) × 60, displayed in minutes and seconds
-            </p>
-          </div>
-
-          {/* 12 Hour Target - Read-only, Auto-calculated */}
-          <div className="space-y-2">
-            <Label htmlFor="twelveHourTarget" className="flex items-center gap-2">
-              <Package className="h-4 w-4" />
-              12 Hour Target
-            </Label>
-            <Input
-              id="twelveHourTarget"
-              type="text"
-              value={twelveHourTarget}
-              readOnly
-              className="text-lg font-semibold bg-muted cursor-not-allowed"
-              placeholder="Auto-calculated"
-            />
-            <p className="text-xs text-muted-foreground">
-              Target for 12-hour shift: 39600 ÷ (cycle time + loading + unloading) × 0.95
-            </p>
-          </div>
-
-          {/* Cycle Time for 12 Hour Target - Read-only, Auto-calculated */}
-          <div className="space-y-2">
-            <Label htmlFor="cycleTimeForTwelveHourTarget" className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Cycle Time for 12 Hour Target
-            </Label>
-            <Input
-              id="cycleTimeForTwelveHourTarget"
-              type="text"
-              value={formatSecondsAsMinutesSeconds(cycleTimeForTwelveHourTarget)}
-              readOnly
-              className="text-lg font-semibold bg-muted cursor-not-allowed"
-              placeholder="Auto-calculated"
-            />
-            <p className="text-xs text-muted-foreground">
-              Formula: (12 ÷ 12 Hour Target) × 60, displayed in minutes and seconds
-            </p>
-          </div>
-
-          {/* Punch In Time */}
-          <div className="space-y-2">
-            <Label htmlFor="punchIn" className="flex items-center gap-2">
-              <UserCheck className="h-4 w-4" />
-              Punch In Time
-            </Label>
-            <Input
-              id="punchIn"
-              type="time"
-              value={punchInTime}
-              onChange={(e) => setPunchInTime(e.target.value)}
-              className="text-lg font-semibold"
-            />
-            <p className="text-xs text-muted-foreground">
-              Operator start time
-            </p>
-          </div>
-
-          {/* Punch Out Time */}
-          <div className="space-y-2">
-            <Label htmlFor="punchOut" className="flex items-center gap-2">
-              <UserCheck className="h-4 w-4" />
-              Punch Out Time
-            </Label>
-            <Input
-              id="punchOut"
-              type="time"
-              value={punchOutTime}
-              onChange={(e) => setPunchOutTime(e.target.value)}
-              className="text-lg font-semibold"
-            />
-            <p className="text-xs text-muted-foreground">
-              Operator end time
-            </p>
-          </div>
-
-          {/* Duty Time - Always visible, Read-only, Auto-calculated */}
-          <div className="space-y-2">
-            <Label htmlFor="dutyTime" className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Duty Time (Adjusted)
-            </Label>
-            <Input
-              id="dutyTime"
-              type="text"
-              value={getDutyTimeDisplay()}
-              readOnly
-              className={`text-lg font-semibold bg-muted cursor-not-allowed ${isDutyTimeInvalid ? 'text-destructive' : ''}`}
-              placeholder="Enter punch times"
-            />
-            <p className="text-xs text-muted-foreground">
-              Duration between Punch In and Punch Out, with 30-minute deduction when duration is less than 12 hours
-            </p>
-            {isDutyTimeInvalid && (
-              <p className="text-xs text-destructive">
-                Punch out time must be after punch in time
-              </p>
-            )}
-          </div>
-
-          {/* Downtime Reason */}
-          <div className="space-y-2">
-            <Label htmlFor="downtimeReason" className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
-              Downtime Reason
-            </Label>
-            <Input
-              id="downtimeReason"
-              type="text"
-              value={downtimeReason}
-              onChange={(e) => setDowntimeReason(e.target.value)}
-              className="text-lg"
-              placeholder="Enter reason for downtime (optional)"
-            />
-            <p className="text-xs text-muted-foreground">
-              Describe any machine downtime during production
-            </p>
-          </div>
-
-          {/* Downtime Time */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
-              Downtime Duration
-            </Label>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="downtimeMinutes" className="text-xs text-muted-foreground">
-                  Minutes
-                </Label>
-                <Input
-                  id="downtimeMinutes"
-                  type="number"
-                  min="0"
-                  value={downtimeMinutes}
-                  onChange={(e) => setDowntimeMinutes(e.target.value)}
-                  className="text-lg font-semibold"
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="downtimeSeconds" className="text-xs text-muted-foreground">
-                  Seconds
-                </Label>
-                <Input
-                  id="downtimeSeconds"
-                  type="number"
-                  min="0"
-                  max="59"
-                  value={downtimeSeconds}
-                  onChange={(e) => setDowntimeSeconds(e.target.value)}
-                  className="text-lg font-semibold"
-                  placeholder="0"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Total Run Time Display */}
-          {selectedProductData && (
-            <div className="bg-primary/10 p-4 rounded-lg border border-primary/20">
-              <p className="text-sm font-medium text-muted-foreground mb-1">
-                Total Machine Run Time
-              </p>
-              <p className="text-2xl font-bold text-primary">
-                {formatTimeHoursMinutes(totalRunTime.hours, totalRunTime.minutes)}
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Calculated: (Loading + Unloading) × Quantity + Cycle Time × Quantity + Downtime
-              </p>
-            </div>
-          )}
-
-          {/* Total Operator Hours Display */}
-          {selectedProductData && (
-            <div className="bg-secondary/10 p-4 rounded-lg border border-secondary/20">
-              <p className="text-sm font-medium text-muted-foreground mb-1">
-                Total Operator Hours
-              </p>
-              <p className="text-2xl font-bold text-secondary-foreground">
-                {formatTimeInterval(totalOperatorHours)}
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                {operatorHoursExplanation}
-              </p>
-            </div>
-          )}
-
-          {/* Save Button */}
           <Button
-            onClick={handleSave}
-            disabled={!isFormValid || addEntry.isPending || !actor}
-            className="w-full h-12 text-lg gap-2"
-            size="lg"
+            variant="outline"
+            size="sm"
+            onClick={handleReset}
+            className="gap-1 border-border"
+            data-ocid="form.secondary_button"
+          >
+            <RotateCcw className="h-3 w-3" />
+            Clear
+          </Button>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Machine / Operator / Product */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-3 bg-primary/5 rounded-t-lg border-b border-border">
+            <CardTitle className="text-base text-primary">
+              Production Setup
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+            <div className="space-y-2">
+              <Label className="text-foreground font-medium">Machine *</Label>
+              <Select
+                value={form.machineId}
+                onValueChange={(v) => updateField("machineId", v)}
+              >
+                <SelectTrigger
+                  className="border-input"
+                  data-ocid="form.machine.select"
+                >
+                  <SelectValue placeholder="Select machine" />
+                </SelectTrigger>
+                <SelectContent>
+                  {machines.map((m) => (
+                    <SelectItem key={String(m.id)} value={String(m.id)}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-foreground font-medium">Operator *</Label>
+              <Select
+                value={form.operatorId}
+                onValueChange={(v) => updateField("operatorId", v)}
+              >
+                <SelectTrigger
+                  className="border-input"
+                  data-ocid="form.operator.select"
+                >
+                  <SelectValue placeholder="Select operator" />
+                </SelectTrigger>
+                <SelectContent>
+                  {operators.map((o) => (
+                    <SelectItem key={String(o.id)} value={String(o.id)}>
+                      {o.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-foreground font-medium">Product *</Label>
+              <Select
+                value={form.productId}
+                onValueChange={(v) => updateField("productId", v)}
+              >
+                <SelectTrigger
+                  className="border-input"
+                  data-ocid="form.product.select"
+                >
+                  <SelectValue placeholder="Select product" />
+                </SelectTrigger>
+                <SelectContent>
+                  {products.map((p) => (
+                    <SelectItem key={String(p.id)} value={String(p.id)}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Punch Times */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-3 bg-primary/5 rounded-t-lg border-b border-border">
+            <CardTitle className="text-base text-primary flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              Attendance & Punch Times
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-4">
+            {/* Date field */}
+            <div className="space-y-2">
+              <Label className="text-foreground font-medium">Date *</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  value={form.punchDate}
+                  onChange={(e) => updateField("punchDate", e.target.value)}
+                  className="border-input flex-1"
+                  data-ocid="form.date.input"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 text-xs border-border"
+                  onClick={() => updateField("punchDate", todayDateString())}
+                >
+                  Today
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-foreground font-medium">
+                  Punch In *
+                </Label>
+                <AnalogClockPicker
+                  value={form.punchInTime}
+                  onChange={(t) => updateField("punchInTime", t)}
+                  placeholder="Select punch-in time"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-foreground font-medium">
+                  Punch Out *
+                </Label>
+                <AnalogClockPicker
+                  value={form.punchOutTime}
+                  onChange={(t) => updateField("punchOutTime", t)}
+                  placeholder="Select punch-out time"
+                />
+              </div>
+            </div>
+
+            {dutyTimeSec > 0 && (
+              <div className="bg-accent/40 rounded-md px-3 py-2">
+                <p className="text-sm text-accent-foreground">
+                  Duty Time:{" "}
+                  <span className="font-semibold">
+                    {formatHMS(dutyHours, dutyMinutes, dutySeconds)}
+                  </span>
+                  <span className="ml-2 text-xs opacity-70">
+                    (break deducted if shift &lt; 12h and ≥ 30 min)
+                  </span>
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Cycle Time & Quantity */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-3 bg-primary/5 rounded-t-lg border-b border-border">
+            <CardTitle className="text-base text-primary">
+              Cycle Time & Quantity
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+            <div className="space-y-2">
+              <Label className="text-foreground font-medium">
+                Cycle Time (min)
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                value={form.cycleTimeMinutes}
+                onChange={(e) =>
+                  updateField("cycleTimeMinutes", e.target.value)
+                }
+                className="border-input"
+                data-ocid="form.cycletime.input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-foreground font-medium">
+                Cycle Time (sec)
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                max="59"
+                value={form.cycleTimeSeconds}
+                onChange={(e) =>
+                  updateField("cycleTimeSeconds", e.target.value)
+                }
+                className="border-input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-foreground font-medium">
+                Quantity Produced
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                value={form.quantityProduced}
+                onChange={(e) =>
+                  updateField("quantityProduced", e.target.value)
+                }
+                className="border-input"
+                data-ocid="form.quantity.input"
+              />
+            </div>
+
+            {/* Rejection Count */}
+            <div className="space-y-2">
+              <Label className="text-foreground font-medium flex items-center gap-1">
+                <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                Rejection Count
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                value={form.rejectionCount}
+                onChange={(e) => updateField("rejectionCount", e.target.value)}
+                className="border-input"
+                data-ocid="form.rejection.input"
+              />
+            </div>
+
+            {selectedProduct && cycleTimeSec > 0 && (
+              <div className="sm:col-span-3 grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-primary/10 border border-primary/20 rounded-md p-3">
+                  <p className="text-xs text-muted-foreground mb-1">
+                    10h Target
+                  </p>
+                  <span className="text-xl font-bold text-primary">
+                    {tenHourTarget}
+                  </span>
+                </div>
+                <div className="bg-secondary border border-secondary-foreground/10 rounded-md p-3">
+                  <p className="text-xs text-muted-foreground mb-1">
+                    12h Target
+                  </p>
+                  <span className="text-xl font-bold text-secondary-foreground">
+                    {twelveHourTarget}
+                  </span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Downtime */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-3 bg-primary/5 rounded-t-lg border-b border-border">
+            <CardTitle className="text-base text-primary">Downtime</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+            <div className="space-y-2">
+              <Label className="text-foreground font-medium">
+                Downtime (min)
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                value={form.downtimeMinutes}
+                onChange={(e) => updateField("downtimeMinutes", e.target.value)}
+                className="border-input"
+                data-ocid="form.downtime.input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-foreground font-medium">
+                Downtime (sec)
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                max="59"
+                value={form.downtimeSeconds}
+                onChange={(e) => updateField("downtimeSeconds", e.target.value)}
+                className="border-input"
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-3">
+              <Label className="text-foreground font-medium">
+                Downtime Reason
+              </Label>
+              <Textarea
+                placeholder="Describe the reason for downtime..."
+                value={form.downtimeReason}
+                onChange={(e) => updateField("downtimeReason", e.target.value)}
+                rows={2}
+                className="border-input"
+                data-ocid="form.downtime.textarea"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Summary */}
+        {qty > 0 && dutyTimeSec > 0 && (
+          <Card className="border-primary/40 shadow-sm bg-primary text-primary-foreground">
+            <CardHeader className="pb-3 border-b border-primary-foreground/20">
+              <CardTitle className="text-base text-primary-foreground">
+                Calculated Summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm pt-4">
+              {selectedProduct && (
+                <div className="bg-white/10 rounded-md p-3">
+                  <p className="text-primary-foreground/70 text-xs">
+                    Parts Produced
+                  </p>
+                  <p className="font-bold text-primary-foreground text-lg">
+                    {(selectedProduct
+                      ? Number(selectedProduct.piecesPerCycle) * qty
+                      : 0
+                    ).toLocaleString()}
+                  </p>
+                </div>
+              )}
+              {rejCount > 0 && (
+                <div className="bg-white/10 rounded-md p-3">
+                  <p className="text-primary-foreground/70 text-xs flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    Rejections
+                  </p>
+                  <p className="font-bold text-primary-foreground text-lg">
+                    {rejCount}
+                  </p>
+                </div>
+              )}
+              <div className="bg-white/10 rounded-md p-3">
+                <p className="text-primary-foreground/70 text-xs">10h Target</p>
+                <p className="font-bold text-primary-foreground text-lg">
+                  {tenHourTarget}
+                </p>
+              </div>
+              <div className="bg-white/10 rounded-md p-3">
+                <p className="text-primary-foreground/70 text-xs">12h Target</p>
+                <p className="font-bold text-primary-foreground text-lg">
+                  {twelveHourTarget}
+                </p>
+              </div>
+              <div className="bg-white/10 rounded-md p-3">
+                <p className="text-primary-foreground/70 text-xs">Duty Time</p>
+                <p className="font-bold text-primary-foreground">
+                  {formatHMS(dutyHours, dutyMinutes, dutySeconds)}
+                </p>
+              </div>
+              <div className="bg-white/10 rounded-md p-3 sm:col-span-2">
+                <p className="text-primary-foreground/70 text-xs">
+                  Total Operator Hours
+                </p>
+                <p className="font-bold text-primary-foreground text-lg">
+                  {formatHMS(
+                    operatorHours.hours,
+                    operatorHours.minutes,
+                    operatorHours.seconds,
+                  )}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Submit */}
+        <div className="flex gap-3 pb-6">
+          <Button
+            type="submit"
+            disabled={addEntry.isPending}
+            className="flex-1 gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 text-base shadow-md"
+            data-ocid="form.submit_button"
           >
             {addEntry.isPending ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Saving...
-              </>
+              <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
-              <>
-                <Save className="h-5 w-5" />
-                Save Entry
-              </>
+              <Send className="h-5 w-5" />
             )}
+            {addEntry.isPending ? "Submitting..." : "Submit Entry"}
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </form>
     </div>
   );
 }

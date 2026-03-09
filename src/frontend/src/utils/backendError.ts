@@ -1,48 +1,27 @@
-/**
- * Normalizes backend errors into user-friendly English messages
- */
 export function normalizeBackendError(error: unknown): string {
-  if (!error) {
-    return 'An unknown error occurred';
+  if (!error) return "An unknown error occurred";
+
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (message.includes("Unauthorized") || message.includes("unauthorized")) {
+    return "You are not authorized to perform this action.";
+  }
+  if (message.includes("not found") || message.includes("Not found")) {
+    return "The requested item was not found.";
+  }
+  if (
+    message.includes("must be unique") ||
+    message.includes("already exists")
+  ) {
+    return "This name is already in use. Please choose a different name.";
+  }
+  if (message.includes("Actor not available")) {
+    return "Connection to backend is not ready. Please try again.";
   }
 
-  const errorMessage = error instanceof Error ? error.message : String(error);
+  // Strip Motoko trap prefix if present
+  const trapMatch = message.match(/Canister.*?trapped.*?:\s*(.*)/i);
+  if (trapMatch) return trapMatch[1];
 
-  // Check for common backend trap messages
-  if (errorMessage.includes('Unauthorized') || errorMessage.includes('Only admin')) {
-    // Generic unauthorized message without sign-in prompt
-    return 'This action requires elevated permissions';
-  }
-
-  if (errorMessage.includes('name must be unique')) {
-    if (errorMessage.includes('Product')) {
-      return 'A product with this name already exists';
-    }
-    if (errorMessage.includes('Machine')) {
-      return 'A machine with this name already exists';
-    }
-    if (errorMessage.includes('Operator')) {
-      return 'An operator with this name already exists';
-    }
-    return 'A record with this name already exists';
-  }
-
-  if (errorMessage.includes('not found')) {
-    return 'The requested record was not found';
-  }
-
-  if (errorMessage.includes('Actor not available')) {
-    return 'System is still initializing. Please wait a moment and try again.';
-  }
-
-  if (errorMessage.includes('Quantity produced must be at least 1')) {
-    return 'Quantity produced must be at least 1';
-  }
-
-  if (errorMessage.includes('Invalid ID') || errorMessage.includes('invalid')) {
-    return 'Invalid data provided. Please check your inputs and try again.';
-  }
-
-  // Return the original message if no specific pattern matches
-  return errorMessage;
+  return message;
 }
