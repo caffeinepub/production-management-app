@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Clock,
   Loader2,
+  Moon,
   RotateCcw,
   Send,
 } from "lucide-react";
@@ -197,7 +198,16 @@ export default function DataEntryPage() {
     : 0;
 
   const punchInMs = combineDateAndTime(form.punchDate, form.punchInTime);
-  const punchOutMs = combineDateAndTime(form.punchDate, form.punchOutTime);
+  let punchOutMs = combineDateAndTime(form.punchDate, form.punchOutTime);
+  // Night shift: if punch-out time is earlier than punch-in time, it's next day
+  const isNightShift =
+    form.punchInTime &&
+    form.punchOutTime &&
+    form.punchOutTime < form.punchInTime;
+  if (isNightShift) {
+    punchOutMs += 86400000; // add 24 hours
+  }
+
   const dutyTimeSec =
     punchInMs && punchOutMs ? calculateDutyTime(punchInMs, punchOutMs) : 0;
 
@@ -246,10 +256,7 @@ export default function DataEntryPage() {
       toast.error("Please enter punch-out time");
       return;
     }
-    if (punchOutMs <= punchInMs) {
-      toast.error("Punch-out must be after punch-in");
-      return;
-    }
+    // No validation blocking night shift — punchOutMs already adjusted above
 
     const punchInNs = BigInt(Math.floor(punchInMs * 1_000_000));
     const punchOutNs = BigInt(Math.floor(punchOutMs * 1_000_000));
@@ -478,7 +485,7 @@ export default function DataEntryPage() {
             </div>
 
             {dutyTimeSec > 0 && (
-              <div className="bg-accent/40 rounded-md px-3 py-2">
+              <div className="bg-accent/40 rounded-md px-3 py-2 flex items-center gap-3 flex-wrap">
                 <p className="text-sm text-accent-foreground">
                   Duty Time:{" "}
                   <span className="font-semibold">
@@ -488,6 +495,12 @@ export default function DataEntryPage() {
                     (break deducted if shift &lt; 12h and ≥ 30 min)
                   </span>
                 </p>
+                {isNightShift && (
+                  <Badge className="gap-1 bg-indigo-600 text-white border-0 shrink-0">
+                    <Moon className="h-3 w-3" />
+                    Night Shift
+                  </Badge>
+                )}
               </div>
             )}
           </CardContent>
@@ -638,8 +651,14 @@ export default function DataEntryPage() {
         {qty > 0 && dutyTimeSec > 0 && (
           <Card className="border-primary/40 shadow-sm bg-primary text-primary-foreground">
             <CardHeader className="pb-3 border-b border-primary-foreground/20">
-              <CardTitle className="text-base text-primary-foreground">
+              <CardTitle className="text-base text-primary-foreground flex items-center gap-2">
                 Calculated Summary
+                {isNightShift && (
+                  <Badge className="gap-1 bg-indigo-500 text-white border-0 text-xs">
+                    <Moon className="h-3 w-3" />
+                    Night Shift
+                  </Badge>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm pt-4">

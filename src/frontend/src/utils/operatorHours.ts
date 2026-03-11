@@ -54,10 +54,14 @@ export function calculateDutyTime(
   punchInMs: number,
   punchOutMs: number,
 ): number {
-  if (punchOutMs <= punchInMs) return 0;
-  const durationSeconds = Math.floor((punchOutMs - punchInMs) / 1000);
+  let effectivePunchOutMs = punchOutMs;
+  // If punch-out appears before punch-in, treat as next day (night shift)
+  if (effectivePunchOutMs <= punchInMs) {
+    effectivePunchOutMs += 86400000; // add 24 hours
+  }
+  const durationSeconds = Math.floor((effectivePunchOutMs - punchInMs) / 1000);
   const totalMinutes = Math.floor(durationSeconds / 60);
-  if (durationSeconds >= 43200) return durationSeconds;
-  if (totalMinutes >= 30) return durationSeconds - 1800;
+  if (durationSeconds >= 43200) return durationSeconds; // 12h+ no deduction
+  if (totalMinutes >= 30) return durationSeconds - 1800; // deduct 30 min
   return durationSeconds;
 }
