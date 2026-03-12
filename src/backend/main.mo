@@ -498,26 +498,23 @@ actor {
       { hours; minutes; seconds };
     };
 
-    switch (punchOut > punchIn) {
-      case (true) {
-        let durationSeconds = (punchOut - punchIn) / 1_000_000_000;
-        let hours = (durationSeconds / 3600).toNat();
-        let remainder = Int.abs(durationSeconds % 3600);
-        let totalDurationMinutes = (hours * 60).toInt() + (remainder / 60);
+    // Night shift support: if punchOut <= punchIn, add 24 hours to punchOut
+    let effectivePunchOut = if (punchOut <= punchIn) { punchOut + 86_400_000_000_000 } else { punchOut };
+    let durationSeconds = (effectivePunchOut - punchIn) / 1_000_000_000;
+    let hours = (durationSeconds / 3600).toNat();
+    let remainder = Int.abs(durationSeconds % 3600);
+    let totalDurationMinutes = (hours * 60).toInt() + (remainder / 60);
 
-        switch (durationSeconds >= 43200) {
-          case (true) { secondsToHMS(durationSeconds) };
-          case (false) {
-            switch (totalDurationMinutes >= 30) {
-              case (true) {
-                secondsToHMS(durationSeconds - 1800);
-              };
-              case (false) { secondsToHMS(durationSeconds) };
-            };
+    switch (durationSeconds >= 43200) {
+      case (true) { secondsToHMS(durationSeconds) };
+      case (false) {
+        switch (totalDurationMinutes >= 30) {
+          case (true) {
+            secondsToHMS(durationSeconds - 1800);
           };
+          case (false) { secondsToHMS(durationSeconds) };
         };
       };
-      case (false) { { hours = 0; minutes = 0; seconds = 0 } };
     };
   };
 

@@ -260,7 +260,6 @@ export default function DataEntryPage() {
 
     const punchInNs = BigInt(Math.floor(punchInMs * 1_000_000));
     const punchOutNs = BigInt(Math.floor(punchOutMs * 1_000_000));
-    const nowNs = BigInt(Date.now()) * BigInt(1_000_000);
 
     await addEntry.mutateAsync({
       machineId: BigInt(form.machineId),
@@ -278,12 +277,12 @@ export default function DataEntryPage() {
       },
       punchIn: punchInNs,
       punchOut: punchOutNs,
-      timestamp: nowNs,
+      timestamp: punchInNs,
     });
 
     // Save rejection count separately in localStorage keyed by timestamp
     if (rejCount > 0) {
-      saveRejection(String(nowNs), rejCount);
+      saveRejection(String(punchInNs), rejCount);
     }
 
     setForm({ ...emptyForm, punchDate: todayDateString() });
